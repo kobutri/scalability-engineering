@@ -1,0 +1,10 @@
+services:
+  bootstrap:
+    image: cosmtrek/air
+    working_dir: /app
+    ports:
+      - "8080:8080"
+    environment:
+      - ENV=development
+    volumes:
+      - ./bootstrap:/app

@@ -1,0 +1,20 @@
+services:
+  bootstrap:
+    build:
+      context: ./bootstrap
+      dockerfile: ${DOCKERFILE:-Dockerfile}
+    ports:
+      - "8080:8080"
+    container_name: bootstrap-server
+    restart: unless-stopped
+    environment:
+      - ENV=${ENV:-production}
+    volumes:
+      # Mount source code for development (only used in dev mode)
+      - ${BOOTSTRAP_VOLUME_MOUNT:-./bootstrap:/app}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      interval: 30s
