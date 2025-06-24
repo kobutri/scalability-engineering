@@ -1,0 +1,356 @@
+package main
+
+import "fmt"
+
+type StatusData struct {
+	HashSetSize       int
+	PriorityQueueSize int
+	UptimeSeconds     float64
+	UptimeFormatted   string
+	CurrentTime       string
+	Names             []string
+	QueueItems        []QueueItem
+	Config            ServerConfig
+	WorkersRunning    bool
+}
+
+type QueueItem struct {
+	Name      string
+	Priority  int64
+	Timestamp string
+	Age       string
+}
+
+type ServerConfig struct {
+	Timeout    string
+	MaxAge     string
+	SubsetSize int
+}
+
+templ statusPage(data StatusData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Bootstrap Server Control Panel</title>
+			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.5/dist/htmx.min.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3" integrity="sha384-JcorokHTL/m+D6ZHe2+yFVQopVwZ+91GxAPDyEZ6/A/OEPGEx1+MeNSe2OGvoRS9" crossorigin="anonymous"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph-ext.min.js" integrity="sha384-szktAZju9fwY15dZ6D2FKFN4eZoltuXiHStNDJWK9+FARrxJtquql828JzikODob" crossorigin="anonymous"></script>
+			<style>
+			body {
+				font-family: monospace;
+				margin: 0;
+				padding: 10px;
+				background: #f5f5f5;
+				font-size: 14px;
+			}
+			.container {
+				max-width: 1400px;
+			}
+			.header {
+				background: #fff;
+				border: 1px solid #ddd;
+				padding: 10px;
+				margin-bottom: 10px;
+			}
+			.header h1 {
+				margin: 0;
+				font-size: 20px;
+			}
+			.grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 10px;
+				margin-bottom: 10px;
+			}
+			.grid.control-grid {
+				grid-template-columns: 1fr;
+				max-width: 400px;
+			}
+			.panel {
+				background: #fff;
+				border: 1px solid #ddd;
+				padding: 10px;
+			}
+			.panel h3 {
+				margin: 0 0 10px 0;
+				font-size: 14px;
+				border-bottom: 1px solid #eee;
+				padding-bottom: 5px;
+			}
+			.stats {
+				display: grid;
+				grid-template-columns: repeat(4, 1fr);
+				gap: 10px;
+				margin-bottom: 10px;
+			}
+			.stat {
+				background: #fff;
+				border: 1px solid #ddd;
+				padding: 10px;
+				text-align: center;
+			}
+			.stat-value {
+				font-size: 18px;
+				font-weight: bold;
+			}
+			.stat-label {
+				font-size: 12px;
+				color: #666;
+			}
+			.scrollable {
+				max-height: 300px;
+				overflow-y: auto;
+				border: 1px solid #ddd;
+				background: #fff;
+			}
+			.list-item {
+				padding: 5px 10px;
+				border-bottom: 1px solid #eee;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+			}
+			.list-item:last-child {
+				border-bottom: none;
+			}
+			.list-item:hover {
+				background: #f9f9f9;
+			}
+			table {
+				width: 100%;
+				border-collapse: collapse;
+				font-size: 12px;
+			}
+			th, td {
+				padding: 5px;
+				text-align: left;
+				border-bottom: 1px solid #eee;
+			}
+			th {
+				background: #f9f9f9;
+				font-weight: bold;
+			}
+			.form-group {
+				margin-bottom: 10px;
+			}
+			.form-group label {
+				display: block;
+				margin-bottom: 2px;
+				font-size: 12px;
+			}
+			input, select, button {
+				padding: 5px;
+				border: 1px solid #ddd;
+				font-family: monospace;
+				font-size: 12px;
+			}
+			button {
+				background: #fff;
+				cursor: pointer;
+			}
+			button:hover {
+				background: #f0f0f0;
+			}
+			.btn-danger {
+				background: #ffe6e6;
+				color: #d00;
+			}
+			.btn-danger:hover {
+				background: #ffcccc;
+			}
+			.btn-success {
+				background: #e6ffe6;
+				color: #060;
+			}
+			.btn-success:hover {
+				background: #ccffcc;
+			}
+			.inline-form {
+				display: flex;
+				gap: 5px;
+				align-items: center;
+			}
+			.status-indicator {
+				position: fixed;
+				top: 10px;
+				right: 10px;
+				background: #fff;
+				border: 1px solid #ddd;
+				padding: 5px 10px;
+				font-size: 12px;
+			}
+		</style>
+		</head>
+		<body>
+			<div class="container">
+				<div class="header">
+					<h1>Bootstrap Server Control Panel</h1>
+				</div>
+				<!-- Auto-updating content including header info -->
+				<div id="status-content" hx-get="/status-data" hx-trigger="every 2s" hx-swap="morph:innerHTML">
+					@statusContent(data)
+				</div>
+			</div>
+		</body>
+	</html>
+}
+
+templ statsSection(data StatusData) {
+	<div class="stats">
+		<div class="stat">
+			<div class="stat-value">{ fmt.Sprintf("%d", data.HashSetSize) }</div>
+			<div class="stat-label">HashSet Size</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ fmt.Sprintf("%d", data.PriorityQueueSize) }</div>
+			<div class="stat-label">Queue Size</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ data.Config.Timeout }</div>
+			<div class="stat-label">Timeout</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ data.Config.MaxAge }</div>
+			<div class="stat-label">Max Age</div>
+		</div>
+	</div>
+}
+
+templ controlSection(data StatusData) {
+	<div class="panel">
+		<h3>Configuration</h3>
+		<!-- Current config display -->
+		<div class="form-group">
+			<strong>Current:</strong>
+			<span style="font-family: monospace; background: #f0f0f0; padding: 2px 5px;">
+				Timeout: { data.Config.Timeout } | Max Age: { data.Config.MaxAge } | Subset: { fmt.Sprintf("%d", data.Config.SubsetSize) }
+			</span>
+		</div>
+		<!-- Smart updating form -->
+		<form id="config-form" hx-post="/update-config" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:innerHTML">
+			<div class="form-group">
+				<label>Health Check Timeout:</label>
+				<input
+					hx-preserve
+					type="text"
+					name="timeout"
+					id="timeout-input"
+					value={ data.Config.Timeout }
+					placeholder="e.g. 500ms"
+				/>
+			</div>
+			<div class="form-group">
+				<label>Max Age:</label>
+				<input
+					hx-preserve
+					type="text"
+					name="maxAge"
+					id="maxage-input"
+					value={ data.Config.MaxAge }
+					placeholder="e.g. 10s"
+				/>
+			</div>
+			<div class="form-group">
+				<label>Subset Size:</label>
+				<input
+					hx-preserve
+					type="number"
+					name="subsetSize"
+					id="subset-input"
+					value={ fmt.Sprintf("%d", data.Config.SubsetSize) }
+					min="1"
+				/>
+			</div>
+			<button type="submit">Update Config</button>
+		</form>
+		<hr/>
+		<div class="form-group">
+			<label>Background Workers:</label>
+			if data.WorkersRunning {
+				<button hx-post="/stop-workers" hx-target="#status-content" hx-swap="morph:innerHTML" class="btn-danger">Stop Workers</button>
+			} else {
+				<button hx-post="/start-workers" hx-target="#status-content" hx-swap="morph:innerHTML" class="btn-success">Start Workers</button>
+			}
+		</div>
+	</div>
+}
+
+templ dataSection(data StatusData) {
+	<div class="grid">
+		<div class="panel">
+			<h3>HashSet Management ({ fmt.Sprintf("%d", len(data.Names)) } items)</h3>
+			<form hx-post="/add-name" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:innerHTML" class="inline-form">
+				<input type="text" name="name" placeholder="Add name..." required/>
+				<button type="submit">Add</button>
+			</form>
+			<div class="scrollable">
+				if len(data.Names) > 0 {
+					for _, name := range data.Names {
+						<div class="list-item">
+							<span>{ name }</span>
+							<button hx-post="/remove-name" hx-vals={ fmt.Sprintf("{\"name\":\"%s\"}", name) } hx-target="#status-content" hx-swap="morph:innerHTML" class="btn-danger">Remove</button>
+						</div>
+					}
+				} else {
+					<div class="list-item">No names registered</div>
+				}
+			</div>
+		</div>
+		<div class="panel">
+			<h3>Priority Queue ({ fmt.Sprintf("%d", len(data.QueueItems)) } items)</h3>
+			<form hx-post="/clear-queue" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:innerHTML">
+				<button type="submit" class="btn-danger">Clear Queue</button>
+			</form>
+			<div class="scrollable">
+				if len(data.QueueItems) > 0 {
+					<table>
+						<thead>
+							<tr>
+								<th>Name</th>
+								<th>Age</th>
+								<th>Timestamp</th>
+								<th>Action</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, item := range data.QueueItems {
+								<tr>
+									<td>{ item.Name }</td>
+									<td>{ item.Age }</td>
+									<td>{ item.Timestamp }</td>
+									<td>
+										<button hx-post="/remove-from-queue" hx-vals={ fmt.Sprintf("{\"name\":\"%s\"}", item.Name) } hx-target="#status-content" hx-swap="morph:innerHTML" class="btn-danger">Remove</button>
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				} else {
+					<div class="list-item">Queue is empty</div>
+				}
+			</div>
+		</div>
+	</div>
+}
+
+templ statusContent(data StatusData) {
+	<!-- Dynamic header info -->
+	<div style="background: #fff; border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+		<span>Uptime: { data.UptimeFormatted } | Last Update: { data.CurrentTime }</span>
+		<span style="font-size: 12px;">
+			Workers: 
+			if data.WorkersRunning {
+				<span style="color: green;">● RUNNING</span>
+			} else {
+				<span style="color: red;">● STOPPED</span>
+			}
+		</span>
+	</div>
+	@statsSection(data)
+	<div class="grid">
+		@controlSection(data)
+		@dataSection(data)
+	</div>
+}

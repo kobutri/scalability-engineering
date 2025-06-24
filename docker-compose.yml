@@ -9,12 +9,18 @@ services:
     restart: unless-stopped
     environment:
       - ENV=${ENV:-production}
+      - DATA_DIR=/data
     volumes:
       # Mount source code for development (only used in dev mode)
       - ${BOOTSTRAP_VOLUME_MOUNT:-./bootstrap:/app}
+      # Mount data directory for persistence
+      - bootstrap_data:/data
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
       timeout: 10s
       retries: 3
       start_period: 40s
       interval: 30s
+
+volumes:
+  bootstrap_data:
