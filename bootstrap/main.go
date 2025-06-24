@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,15 +12,12 @@ import (
 
 // Global HashSet instance for the demo
 var demoSet *HashSet[string]
-var globalLockSet *GlobalLockHashSet[string]
 var mu sync.RWMutex
 
 func init() {
 	// Initialize with some demo data
-	demoSet = NewHashSetWithShards[string](32)
-	globalLockSet = NewGlobalLockHashSet[string]()
+	demoSet = NewHashSet[string]()
 	demoSet.InsertAll("apple", "banana", "cherry", "date", "elderberry", "fig", "grape")
-	globalLockSet.InsertAll("apple", "banana", "cherry", "date", "elderberry", "fig", "grape")
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -130,17 +126,13 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
     <div class="container">
         <div class="header">
             <h1><span class="symbol">&gt;</span> Thread-Safe Generic HashSet Demo</h1>
-            <p>Type: <code>HashSet[string]</code> with fine-grained locking</p>
+            <p>Type: <code>HashSet[string]</code> thread-safe implementation</p>
         </div>
         
         <div class="stats">
             <div class="stat-item">
                 <div class="stat-number">%d</div>
                 <div class="stat-label">Total Elements</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">%d</div>
-                <div class="stat-label">Shards</div>
             </div>
             <div class="stat-item">
                 <div class="stat-number">%.2f</div>
@@ -159,7 +151,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
                 <span class="symbol">&rArr;</span> Concurrency Test
             </a>
             <a href="/compare" class="action-btn secondary">
-                <span class="symbol">&harr;</span> Performance Comparison
+                <span class="symbol">&harr;</span> Performance Analysis
             </a>
             <a href="/clear" class="action-btn danger" onclick="return confirm('Clear all elements?')">
                 <span class="symbol">&times;</span> Clear All
@@ -191,11 +183,11 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
         </div>
 
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #dee2e6; text-align: center; color: #6c757d;">
-            <p><strong>Features:</strong> O(1) operations, thread-safe, sharded locking, zero-boxing generics</p>
+            <p><strong>Features:</strong> O(1) operations, thread-safe, zero-boxing generics</p>
         </div>
     </div>
 </body>
-</html>`, size, stats.ShardCount, stats.LoadFactor)
+</html>`, size, stats.LoadFactor)
 }
 
 func insertHandler(w http.ResponseWriter, r *http.Request) {
@@ -516,25 +508,15 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 </head>
 <body>
     <div class="container">
-        <h1>Detailed Statistics (Generic HashSet[string])</h1>
+        <h1>Detailed Statistics (HashSet[string])</h1>
         
         <h3>Overall Stats</h3>
         <p><strong>Total Elements:</strong> %d</p>
-        <p><strong>Shard Count:</strong> %d</p>
         <p><strong>Load Factor:</strong> %.2f</p>
         
-        <h3>Per-Shard Distribution</h3>
-        <table>
-            <tr><th>Shard Index</th><th>Element Count</th><th>Percentage</th></tr>`,
-		stats.TotalElements, stats.ShardCount, stats.LoadFactor)
-
-	for i, count := range stats.ElementsPerShard {
-		percentage := 0.0
-		if stats.TotalElements > 0 {
-			percentage = float64(count) / float64(stats.TotalElements) * 100
-		}
-		fmt.Fprintf(w, "<tr><td>%d</td><td>%d</td><td>%.1f%%</td></tr>", i, count, percentage)
-	}
+        <h3>Implementation Details</h3>
+        <p>This HashSet provides thread-safe operations with O(1) performance characteristics.</p>`,
+		stats.TotalElements, stats.LoadFactor)
 
 	fmt.Fprintf(w, `
         </table>
@@ -566,7 +548,7 @@ func testHandler(w http.ResponseWriter, r *http.Request) {
         <pre>`)
 
 	// Run concurrency test
-	testSet := NewHashSetWithShards[string](64)
+	testSet := NewHashSet[string]()
 	numGoroutines := 100
 	elementsPerGoroutine := 10000
 
@@ -611,7 +593,6 @@ func testHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Success rate: %.2f%%\n", float64(finalStats.TotalElements)/float64(numGoroutines*elementsPerGoroutine)*100)
 	fmt.Fprintf(w, "Random accesses completed: %d\n", randomCount)
 	fmt.Fprintf(w, "Load factor: %.2f\n", finalStats.LoadFactor)
-	fmt.Fprintf(w, "Elements per shard: %v\n", finalStats.ElementsPerShard)
 
 	fmt.Fprintf(w, `
         </pre>
@@ -628,31 +609,27 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Performance Comparison</title>
+    <title>Performance Analysis</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         .container { max-width: 1000px; margin: 0 auto; }
         pre { background: #f8f8f8; padding: 10px; border-radius: 4px; overflow-x: auto; }
         .back { background: #007cba; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; }
-        .comparison { display: flex; gap: 20px; margin: 20px 0; }
-        .result { flex: 1; background: #f0f0f0; padding: 15px; border-radius: 5px; }
-        .winner { background: #d4edda; border: 2px solid #c3e6cb; }
-        .loser { background: #f8d7da; border: 2px solid #f5c6cb; }
+        .result { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 10px 0; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Performance Comparison: Sharded vs Global Lock</h1>
+        <h1>Performance Analysis: HashSet</h1>
         <pre>`)
 
-	fmt.Fprintf(w, "Running comprehensive performance comparison...\n\n")
+	fmt.Fprintf(w, "Running performance analysis of HashSet...\n\n")
 
 	// Test 1: Single-threaded operations
 	fmt.Fprintf(w, "=== Test 1: Single-threaded Operations ===\n")
 
-	// Create fresh instances for testing
-	shardedSet := NewHashSetWithShards[string](32)
-	globalSet := NewGlobalLockHashSet[string]()
+	// Create fresh instance for testing
+	testSet := NewHashSet[string]()
 
 	// Test insertions
 	numOps := 10000
@@ -660,290 +637,125 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 	for i := 0; i < numOps; i++ {
-		shardedSet.Insert(fmt.Sprintf("item-%d", i))
+		testSet.Insert(fmt.Sprintf("item-%d", i))
 	}
-	shardedTime := time.Since(start)
+	insertTime := time.Since(start)
 
-	start = time.Now()
-	for i := 0; i < numOps; i++ {
-		globalSet.Insert(fmt.Sprintf("item-%d", i))
-	}
-	globalTime := time.Since(start)
-
-	fmt.Fprintf(w, "  Sharded:     %v (%.0f ops/sec)\n", shardedTime, float64(numOps)/shardedTime.Seconds())
-	fmt.Fprintf(w, "  Global Lock: %v (%.0f ops/sec)\n", globalTime, float64(numOps)/globalTime.Seconds())
-	fmt.Fprintf(w, "  Speedup:     %.2fx\n\n", float64(globalTime)/float64(shardedTime))
+	fmt.Fprintf(w, "  Insert time: %v (%.0f ops/sec)\n", insertTime, float64(numOps)/insertTime.Seconds())
 
 	// Test lookups
 	fmt.Fprintf(w, "Performing %d lookups:\n", numOps)
 
 	start = time.Now()
 	for i := 0; i < numOps; i++ {
-		shardedSet.Contains(fmt.Sprintf("item-%d", i))
+		testSet.Contains(fmt.Sprintf("item-%d", i))
 	}
-	shardedLookupTime := time.Since(start)
+	lookupTime := time.Since(start)
 
-	start = time.Now()
-	for i := 0; i < numOps; i++ {
-		globalSet.Contains(fmt.Sprintf("item-%d", i))
-	}
-	globalLookupTime := time.Since(start)
-
-	fmt.Fprintf(w, "  Sharded:     %v (%.0f ops/sec)\n", shardedLookupTime, float64(numOps)/shardedLookupTime.Seconds())
-	fmt.Fprintf(w, "  Global Lock: %v (%.0f ops/sec)\n", globalLookupTime, float64(numOps)/globalLookupTime.Seconds())
-	fmt.Fprintf(w, "  Speedup:     %.2fx\n\n", float64(globalLookupTime)/float64(shardedLookupTime))
+	fmt.Fprintf(w, "  Lookup time: %v (%.0f ops/sec)\n\n", lookupTime, float64(numOps)/lookupTime.Seconds())
 
 	// Test 2: Concurrent operations
-	fmt.Fprintf(w, "=== Test 2: High Concurrency, Low Ops Per Goroutine ===\n")
-	fmt.Fprintf(w, "This simulates a realistic scenario like a web server with many\n")
-	fmt.Fprintf(w, "concurrent requests, each doing just a few operations.\n\n")
+	fmt.Fprintf(w, "=== Test 2: Concurrent Operations ===\n")
+	fmt.Fprintf(w, "Testing with multiple goroutines for concurrent access.\n\n")
 
-	numGoroutines := 5000
-	opsPerGoroutine := 5
+	numGoroutines := 1000
+	opsPerGoroutine := 10
 	fmt.Fprintf(w, "Concurrent insertions (%d goroutines, %d ops each = %d total):\n",
 		numGoroutines, opsPerGoroutine, numGoroutines*opsPerGoroutine)
 
-	// Fresh instances for concurrent test
-	shardedSet = NewHashSetWithShards[string](32)
-	globalSet = NewGlobalLockHashSet[string]()
+	// Fresh instance for concurrent test
+	testSet = NewHashSet[string]()
 
 	var wg sync.WaitGroup
 
-	// Test sharded version
+	// Test concurrent operations
 	start = time.Now()
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < opsPerGoroutine; j++ {
-				shardedSet.Insert(fmt.Sprintf("concurrent-%d-%d", id, j))
+				testSet.Insert(fmt.Sprintf("concurrent-%d-%d", id, j))
 			}
 		}(i)
 	}
 	wg.Wait()
-	shardedConcurrentTime := time.Since(start)
-
-	// Test global lock version
-	start = time.Now()
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			for j := 0; j < opsPerGoroutine; j++ {
-				globalSet.Insert(fmt.Sprintf("concurrent-%d-%d", id, j))
-			}
-		}(i)
-	}
-	wg.Wait()
-	globalConcurrentTime := time.Since(start)
+	concurrentTime := time.Since(start)
 
 	totalOps := numGoroutines * opsPerGoroutine
-	fmt.Fprintf(w, "  Sharded:     %v (%.0f ops/sec)\n", shardedConcurrentTime, float64(totalOps)/shardedConcurrentTime.Seconds())
-	fmt.Fprintf(w, "  Global Lock: %v (%.0f ops/sec)\n", globalConcurrentTime, float64(totalOps)/globalConcurrentTime.Seconds())
-	fmt.Fprintf(w, "  Speedup:     %.2fx\n\n", float64(globalConcurrentTime)/float64(shardedConcurrentTime))
+	fmt.Fprintf(w, "  Concurrent time: %v (%.0f ops/sec)\n\n", concurrentTime, float64(totalOps)/concurrentTime.Seconds())
 
-	// Test 2.5: Force actual lock contention by accessing same elements
-	fmt.Fprintf(w, "=== Test 2.5: Forced Lock Contention (Same Data Access) ===\n")
-	fmt.Fprintf(w, "Force contention by having many goroutines access the same elements\n")
-	fmt.Fprintf(w, "and use a start barrier to ensure simultaneous execution.\n\n")
+	// Test 3: Mixed operations
+	fmt.Fprintf(w, "=== Test 3: Mixed Operations ===\n")
+	fmt.Fprintf(w, "Testing mixed read/write operations under load.\n\n")
 
-	numContentionGoroutines := 1000
-	contentionOps := 20
-	fmt.Fprintf(w, "Contention test (%d goroutines, %d ops each, accessing same elements):\n",
-		numContentionGoroutines, contentionOps)
-
-	// Fresh instances
-	shardedSet = NewHashSetWithShards[string](32)
-	globalSet = NewGlobalLockHashSet[string]()
-
-	// Pre-populate with a small set of "hot" elements that everyone will access
-	hotElements := []string{"hot1", "hot2", "hot3", "hot4", "hot5"}
-	for _, elem := range hotElements {
-		shardedSet.Insert(elem)
-		globalSet.Insert(elem)
+	// Pre-populate set with base data
+	testSet = NewHashSet[string]()
+	for i := 0; i < 1000; i++ {
+		testSet.Insert(fmt.Sprintf("base-%d", i))
 	}
 
-	// Test sharded version with forced contention
-	var startBarrier sync.WaitGroup
-	startBarrier.Add(1)
+	numMixedGoroutines := 500
+	fmt.Fprintf(w, "Running %d goroutines, each doing mixed operations:\n", numMixedGoroutines)
 
-	start = time.Now()
-	for i := 0; i < numContentionGoroutines; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			startBarrier.Wait() // Wait for all goroutines to be ready
-
-			for j := 0; j < contentionOps; j++ {
-				// Access the same "hot" elements to force contention
-				hotElement := hotElements[j%len(hotElements)]
-				shardedSet.Contains(hotElement)
-				shardedSet.Insert(fmt.Sprintf("%s-variant-%d", hotElement, id))
-				shardedSet.RandomElement()
-			}
-		}(i)
-	}
-	startBarrier.Done() // Release all goroutines simultaneously
-	wg.Wait()
-	shardedContentionTime := time.Since(start)
-
-	// Test global lock version with forced contention
-	startBarrier.Add(1)
-
-	start = time.Now()
-	for i := 0; i < numContentionGoroutines; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			startBarrier.Wait() // Wait for all goroutines to be ready
-
-			for j := 0; j < contentionOps; j++ {
-				// Same operations as sharded version
-				hotElement := hotElements[j%len(hotElements)]
-				globalSet.Contains(hotElement)
-				globalSet.Insert(fmt.Sprintf("%s-variant-%d", hotElement, id))
-				globalSet.RandomElement()
-			}
-		}(i)
-	}
-	startBarrier.Done() // Release all goroutines simultaneously
-	wg.Wait()
-	globalContentionTime := time.Since(start)
-
-	totalContentionOps := numContentionGoroutines * contentionOps * 3 // 3 ops per iteration
-	fmt.Fprintf(w, "  Sharded:     %v (%.0f ops/sec)\n", shardedContentionTime, float64(totalContentionOps)/shardedContentionTime.Seconds())
-	fmt.Fprintf(w, "  Global Lock: %v (%.0f ops/sec)\n", globalContentionTime, float64(totalContentionOps)/globalContentionTime.Seconds())
-	fmt.Fprintf(w, "  Speedup:     %.2fx\n\n", float64(globalContentionTime)/float64(shardedContentionTime))
-
-	// Test 3: Mixed concurrent operations with many short-lived goroutines
-	fmt.Fprintf(w, "=== Test 3: Mixed Operations (Many Short-Lived Goroutines) ===\n")
-	fmt.Fprintf(w, "Simulating many concurrent workers each doing mixed operations.\n\n")
-
-	// Pre-populate sets with reasonable base data
-	for i := 0; i < 10000; i++ {
-		element := fmt.Sprintf("base-%d", i)
-		shardedSet.Insert(element)
-		globalSet.Insert(element)
-	}
-
-	numMixedGoroutines := 2000
-	fmt.Fprintf(w, "Running %d goroutines, each doing 1-2 writes, 3-5 reads, 1-2 random access:\n", numMixedGoroutines)
-
-	// Test sharded version
 	start = time.Now()
 	for i := 0; i < numMixedGoroutines; i++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 
-			// Each goroutine does a few mixed operations (realistic for web requests)
+			// Each goroutine does mixed operations
 			// 1-2 writes
-			shardedSet.Insert(fmt.Sprintf("write-%d-1", id))
+			testSet.Insert(fmt.Sprintf("write-%d-1", id))
 			if id%2 == 0 {
-				shardedSet.Insert(fmt.Sprintf("write-%d-2", id))
+				testSet.Insert(fmt.Sprintf("write-%d-2", id))
 			}
 
 			// 3-5 reads
-			shardedSet.Contains(fmt.Sprintf("base-%d", id%10000))
-			shardedSet.Contains(fmt.Sprintf("base-%d", (id*7)%10000))
-			shardedSet.Contains(fmt.Sprintf("base-%d", (id*13)%10000))
+			testSet.Contains(fmt.Sprintf("base-%d", id%1000))
+			testSet.Contains(fmt.Sprintf("base-%d", (id*7)%1000))
+			testSet.Contains(fmt.Sprintf("base-%d", (id*13)%1000))
 			if id%3 == 0 {
-				shardedSet.Contains(fmt.Sprintf("base-%d", (id*17)%10000))
-				shardedSet.Contains(fmt.Sprintf("base-%d", (id*19)%10000))
+				testSet.Contains(fmt.Sprintf("base-%d", (id*17)%1000))
+				testSet.Contains(fmt.Sprintf("base-%d", (id*19)%1000))
 			}
 
 			// 1-2 random accesses
-			shardedSet.RandomElement()
+			testSet.RandomElement()
 			if id%4 == 0 {
-				shardedSet.RandomElement()
+				testSet.RandomElement()
 			}
 		}(i)
 	}
 	wg.Wait()
-	shardedMixedTime := time.Since(start)
-
-	// Test global lock version
-	start = time.Now()
-	for i := 0; i < numMixedGoroutines; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-
-			// Same operations as sharded version
-			globalSet.Insert(fmt.Sprintf("write-%d-1", id))
-			if id%2 == 0 {
-				globalSet.Insert(fmt.Sprintf("write-%d-2", id))
-			}
-
-			globalSet.Contains(fmt.Sprintf("base-%d", id%10000))
-			globalSet.Contains(fmt.Sprintf("base-%d", (id*7)%10000))
-			globalSet.Contains(fmt.Sprintf("base-%d", (id*13)%10000))
-			if id%3 == 0 {
-				globalSet.Contains(fmt.Sprintf("base-%d", (id*17)%10000))
-				globalSet.Contains(fmt.Sprintf("base-%d", (id*19)%10000))
-			}
-
-			globalSet.RandomElement()
-			if id%4 == 0 {
-				globalSet.RandomElement()
-			}
-		}(i)
-	}
-	wg.Wait()
-	globalMixedTime := time.Since(start)
+	mixedTime := time.Since(start)
 
 	// Estimate total operations (approximate)
 	avgOpsPerGoroutine := 1.5 + 3.7 + 1.25 // writes + reads + random
 	totalMixedOps := int(float64(numMixedGoroutines) * avgOpsPerGoroutine)
 
-	fmt.Fprintf(w, "  Sharded:     %v (%.0f ops/sec)\n", shardedMixedTime, float64(totalMixedOps)/shardedMixedTime.Seconds())
-	fmt.Fprintf(w, "  Global Lock: %v (%.0f ops/sec)\n", globalMixedTime, float64(totalMixedOps)/globalMixedTime.Seconds())
-	fmt.Fprintf(w, "  Speedup:     %.2fx\n\n", float64(globalMixedTime)/float64(shardedMixedTime))
+	fmt.Fprintf(w, "  Mixed operations time: %v (%.0f ops/sec)\n\n", mixedTime, float64(totalMixedOps)/mixedTime.Seconds())
 
 	// Summary
 	fmt.Fprintf(w, "=== Summary ===\n")
-	fmt.Fprintf(w, "Single-threaded Insert Speedup:  %.2fx\n", float64(globalTime)/float64(shardedTime))
-	fmt.Fprintf(w, "Single-threaded Lookup Speedup:  %.2fx\n", float64(globalLookupTime)/float64(shardedLookupTime))
-	fmt.Fprintf(w, "High Concurrency Insert Speedup: %.2fx\n", float64(globalConcurrentTime)/float64(shardedConcurrentTime))
-	fmt.Fprintf(w, "Forced Contention Speedup:       %.2fx\n", float64(globalContentionTime)/float64(shardedContentionTime))
-	fmt.Fprintf(w, "Mixed Operations Speedup:        %.2fx\n\n", float64(globalMixedTime)/float64(shardedMixedTime))
+	fmt.Fprintf(w, "Single-threaded Insert:  %.0f ops/sec\n", float64(numOps)/insertTime.Seconds())
+	fmt.Fprintf(w, "Single-threaded Lookup:  %.0f ops/sec\n", float64(numOps)/lookupTime.Seconds())
+	fmt.Fprintf(w, "Concurrent Insert:       %.0f ops/sec\n", float64(totalOps)/concurrentTime.Seconds())
+	fmt.Fprintf(w, "Mixed Operations:        %.0f ops/sec\n\n", float64(totalMixedOps)/mixedTime.Seconds())
 
-	overallSpeedup := (float64(globalTime)/float64(shardedTime) +
-		float64(globalLookupTime)/float64(shardedLookupTime) +
-		float64(globalConcurrentTime)/float64(shardedConcurrentTime) +
-		float64(globalContentionTime)/float64(shardedContentionTime) +
-		float64(globalMixedTime)/float64(shardedMixedTime)) / 5
-
-	fmt.Fprintf(w, "Average Speedup: %.2fx\n\n", overallSpeedup)
-
-	fmt.Fprintf(w, "=== Why This Matters ===\n")
-	fmt.Fprintf(w, "The 'many goroutines, few operations each' pattern is extremely\n")
-	fmt.Fprintf(w, "common in real-world applications:\n\n")
-	fmt.Fprintf(w, "• Web servers: thousands of concurrent requests\n")
-	fmt.Fprintf(w, "• Each request: only a few cache/database operations\n")
-	fmt.Fprintf(w, "• Microservices: high concurrency, low per-request work\n")
-	fmt.Fprintf(w, "• Event processing: many workers, small tasks\n\n")
-	fmt.Fprintf(w, "In these scenarios, lock contention becomes the dominant bottleneck.\n")
-	fmt.Fprintf(w, "Sharding dramatically reduces contention by allowing concurrent\n")
-	fmt.Fprintf(w, "operations on different shards to proceed in parallel.\n\n")
-	fmt.Fprintf(w, "The global lock approach forces ALL operations to serialize,\n")
-	fmt.Fprintf(w, "regardless of which data they're accessing.\n\n")
-
-	fmt.Fprintf(w, "=== Key Insights ===\n")
-	fmt.Fprintf(w, "1. **Sharding Overhead**: Single-threaded operations show the 'tax'\n")
-	fmt.Fprintf(w, "   of sharding (hash computation, shard selection). This is the\n")
-	fmt.Fprintf(w, "   price paid for concurrent benefits.\n\n")
-	fmt.Fprintf(w, "2. **Insufficient Contention**: Simple concurrent insertions may not\n")
-	fmt.Fprintf(w, "   create enough actual simultaneous access to justify sharding\n")
-	fmt.Fprintf(w, "   overhead, especially with Go's scheduler.\n\n")
-	fmt.Fprintf(w, "3. **Real Benefits Emerge**: With actual lock contention (forced\n")
-	fmt.Fprintf(w, "   contention test) and mixed read/write patterns, sharding shows\n")
-	fmt.Fprintf(w, "   significant improvements.\n\n")
-	fmt.Fprintf(w, "4. **Architecture Trade-offs**: Sharding is most beneficial when:\n")
-	fmt.Fprintf(w, "   • High concurrent access to shared data\n")
-	fmt.Fprintf(w, "   • Mixed read/write operations (RWMutex benefits)\n")
-	fmt.Fprintf(w, "   • Lock hold times are non-trivial\n")
-	fmt.Fprintf(w, "   • Data access patterns allow for good shard distribution")
+	fmt.Fprintf(w, "=== Analysis ===\n")
+	fmt.Fprintf(w, "This HashSet provides thread-safe operations with consistent performance.\n")
+	fmt.Fprintf(w, "Characteristics:\n\n")
+	fmt.Fprintf(w, "• **Thread Safety**: Concurrent access protection\n")
+	fmt.Fprintf(w, "• **Memory Efficiency**: Optimized memory usage\n")
+	fmt.Fprintf(w, "• **Performance**: O(1) average case operations\n")
+	fmt.Fprintf(w, "• **Concurrent Reads**: Multiple readers can operate simultaneously\n")
+	fmt.Fprintf(w, "• **Consistency**: Thread-safe operations maintain data integrity\n\n")
+	fmt.Fprintf(w, "Best suited for:\n")
+	fmt.Fprintf(w, "• General purpose concurrent set operations\n")
+	fmt.Fprintf(w, "• Multi-threaded applications\n")
+	fmt.Fprintf(w, "• Applications requiring thread-safe data structures\n")
+	fmt.Fprintf(w, "• Systems needing consistent performance")
 
 	fmt.Fprintf(w, `
         </pre>
@@ -954,17 +766,6 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "persistence-demo":
-			runPersistenceDemo()
-			return
-		case "show-json":
-			showJSONFormat()
-			return
-		}
-	}
-
 	webServerDemo()
 }
 
@@ -983,7 +784,6 @@ func webServerDemo() {
 	fmt.Println("Features:")
 	fmt.Println("- Type-safe with Go generics (HashSet[T comparable])")
 	fmt.Println("- O(1) Insert, Remove, Contains, and Random access")
-	fmt.Println("- Fine-grained locking with configurable sharding")
 	fmt.Println("- Thread-safe concurrent operations")
 	fmt.Println("- Swap-and-pop removal for efficiency")
 	fmt.Println("- Zero boxing overhead with direct type storage")

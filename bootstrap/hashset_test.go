@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -185,7 +184,7 @@ func TestHashSetIterator(t *testing.T) {
 }
 
 func TestHashSetConcurrentInserts(t *testing.T) {
-	set := NewHashSetWithShards[string](64) // More shards for high concurrency
+	set := NewHashSet[string]()
 	numGoroutines := 100
 	elementsPerGoroutine := 1000
 
@@ -211,7 +210,7 @@ func TestHashSetConcurrentInserts(t *testing.T) {
 }
 
 func TestHashSetConcurrentMixedOperations(t *testing.T) {
-	set := NewHashSetWithShards[string](32)
+	set := NewHashSet[string]()
 
 	// Pre-populate with some elements
 	for i := 0; i < 1000; i++ {
@@ -303,7 +302,7 @@ func TestHashSetRandomElementDistribution(t *testing.T) {
 }
 
 func TestHashSetStats(t *testing.T) {
-	set := NewHashSetWithShards[string](8)
+	set := NewHashSet[string]()
 
 	// Insert elements
 	for i := 0; i < 100; i++ {
@@ -316,24 +315,8 @@ func TestHashSetStats(t *testing.T) {
 		t.Errorf("Expected total elements 100, got %d", stats.TotalElements)
 	}
 
-	if stats.ShardCount != 8 {
-		t.Errorf("Expected shard count 8, got %d", stats.ShardCount)
-	}
-
-	if len(stats.ElementsPerShard) != 8 {
-		t.Errorf("Expected ElementsPerShard length 8, got %d", len(stats.ElementsPerShard))
-	}
-
-	// Verify sum of elements per shard equals total
-	sum := 0
-	for _, count := range stats.ElementsPerShard {
-		sum += count
-	}
-	if sum != stats.TotalElements {
-		t.Errorf("Sum of elements per shard (%d) doesn't match total (%d)", sum, stats.TotalElements)
-	}
-
-	expectedLoadFactor := float64(100) / float64(8)
+	// LoadFactor is the ratio of total elements to expected capacity
+	expectedLoadFactor := float64(100)
 	if stats.LoadFactor != expectedLoadFactor {
 		t.Errorf("Expected load factor %f, got %f", expectedLoadFactor, stats.LoadFactor)
 	}
@@ -401,7 +384,7 @@ func TestHashSetDifferentTypes(t *testing.T) {
 
 // Benchmark tests
 func BenchmarkHashSetInsert(b *testing.B) {
-	set := NewHashSetWithShards[string](32)
+	set := NewHashSet[string]()
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -414,7 +397,7 @@ func BenchmarkHashSetInsert(b *testing.B) {
 }
 
 func BenchmarkHashSetContains(b *testing.B) {
-	set := NewHashSetWithShards[string](32)
+	set := NewHashSet[string]()
 
 	// Pre-populate
 	for i := 0; i < 10000; i++ {
@@ -432,7 +415,7 @@ func BenchmarkHashSetContains(b *testing.B) {
 }
 
 func BenchmarkHashSetRandomElement(b *testing.B) {
-	set := NewHashSetWithShards[string](32)
+	set := NewHashSet[string]()
 
 	// Pre-populate
 	for i := 0; i < 10000; i++ {
@@ -452,7 +435,7 @@ func BenchmarkHashSetRemove(b *testing.B) {
 	b.StopTimer()
 
 	numElements := b.N
-	set := NewHashSetWithShards[string](32)
+	set := NewHashSet[string]()
 
 	// Pre-populate with enough elements for the benchmark
 	for i := 0; i < numElements; i++ {
@@ -467,8 +450,8 @@ func BenchmarkHashSetRemove(b *testing.B) {
 	}
 }
 
-func TestGlobalLockHashSetBasicOperations(t *testing.T) {
-	set := NewGlobalLockHashSet[string]()
+func TestHashSetBasicOperationsDuplicate(t *testing.T) {
+	set := NewHashSet[string]()
 
 	// Test insertion
 	if !set.Insert("apple") {
@@ -503,8 +486,8 @@ func TestGlobalLockHashSetBasicOperations(t *testing.T) {
 	}
 }
 
-func TestGlobalLockHashSetConcurrentOperations(t *testing.T) {
-	set := NewGlobalLockHashSet[string]()
+func TestHashSetConcurrentOperations(t *testing.T) {
+	set := NewHashSet[string]()
 	numGoroutines := 50
 	elementsPerGoroutine := 1000
 
@@ -529,9 +512,9 @@ func TestGlobalLockHashSetConcurrentOperations(t *testing.T) {
 	}
 }
 
-// Comparison benchmarks
-func BenchmarkComparisonInsertSharded(b *testing.B) {
-	set := NewHashSetWithShards[string](32)
+// Core benchmarks for HashSet
+func BenchmarkHashSetInsertParallel(b *testing.B) {
+	set := NewHashSet[string]()
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -543,21 +526,8 @@ func BenchmarkComparisonInsertSharded(b *testing.B) {
 	})
 }
 
-func BenchmarkComparisonInsertGlobalLock(b *testing.B) {
-	set := NewGlobalLockHashSet[string]()
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		i := 0
-		for pb.Next() {
-			set.Insert(fmt.Sprintf("item-%d", i))
-			i++
-		}
-	})
-}
-
-func BenchmarkComparisonContainsSharded(b *testing.B) {
-	set := NewHashSetWithShards[string](32)
+func BenchmarkHashSetContainsParallel(b *testing.B) {
+	set := NewHashSet[string]()
 
 	// Pre-populate
 	for i := 0; i < 10000; i++ {
@@ -574,27 +544,9 @@ func BenchmarkComparisonContainsSharded(b *testing.B) {
 	})
 }
 
-func BenchmarkComparisonContainsGlobalLock(b *testing.B) {
-	set := NewGlobalLockHashSet[string]()
-
-	// Pre-populate
-	for i := 0; i < 10000; i++ {
-		set.Insert(fmt.Sprintf("item-%d", i))
-	}
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		i := 0
-		for pb.Next() {
-			set.Contains(fmt.Sprintf("item-%d", i%10000))
-			i++
-		}
-	})
-}
-
-// Realistic scenario benchmarks: Many goroutines, few operations each
-func BenchmarkRealisticWebServerPatternSharded(b *testing.B) {
-	set := NewHashSetWithShards[string](32)
+// Realistic scenario benchmark: Many goroutines, few operations each
+func BenchmarkRealisticWebServerPattern(b *testing.B) {
+	set := NewHashSet[string]()
 
 	// Pre-populate with some "hot" data that requests will access
 	for i := 0; i < 1000; i++ {
@@ -634,50 +586,9 @@ func BenchmarkRealisticWebServerPatternSharded(b *testing.B) {
 	}
 }
 
-func BenchmarkRealisticWebServerPatternGlobalLock(b *testing.B) {
-	set := NewGlobalLockHashSet[string]()
-
-	// Pre-populate with some "hot" data that requests will access
-	for i := 0; i < 1000; i++ {
-		set.Insert(fmt.Sprintf("hot-data-%d", i))
-	}
-
-	b.ResetTimer()
-
-	// Simulate web server pattern: many concurrent requests, each doing few operations
-	goroutinesPerIteration := 100
-	operationsPerGoroutine := 5
-
-	for i := 0; i < b.N; i += goroutinesPerIteration {
-		var wg sync.WaitGroup
-		remaining := b.N - i
-		if remaining > goroutinesPerIteration {
-			remaining = goroutinesPerIteration
-		}
-
-		for j := 0; j < remaining; j++ {
-			wg.Add(1)
-			go func(reqID int) {
-				defer wg.Done()
-
-				// Each "request" does a few operations
-				for k := 0; k < operationsPerGoroutine; k++ {
-					// Same operations as sharded version
-					set.Contains(fmt.Sprintf("hot-data-%d", (reqID*7+k)%1000))
-					set.Insert(fmt.Sprintf("session-%d-%d", reqID, k))
-					if k%2 == 0 {
-						set.RandomElement()
-					}
-				}
-			}(i + j)
-		}
-		wg.Wait()
-	}
-}
-
-// Forced contention benchmarks: Many goroutines accessing the same data
-func BenchmarkForcedContentionSharded(b *testing.B) {
-	set := NewHashSetWithShards[string](32)
+// Forced contention benchmark: Many goroutines accessing the same data
+func BenchmarkForcedContention(b *testing.B) {
+	set := NewHashSet[string]()
 
 	// Pre-populate with hot elements that will cause contention
 	hotElements := []string{"hot1", "hot2", "hot3", "hot4", "hot5"}
@@ -721,94 +632,11 @@ func BenchmarkForcedContentionSharded(b *testing.B) {
 	}
 }
 
-func BenchmarkForcedContentionGlobalLock(b *testing.B) {
-	set := NewGlobalLockHashSet[string]()
-
-	// Pre-populate with hot elements that will cause contention
-	hotElements := []string{"hot1", "hot2", "hot3", "hot4", "hot5"}
-	for _, elem := range hotElements {
-		set.Insert(elem)
-	}
-
-	b.ResetTimer()
-
-	// Force contention by having many goroutines access the same elements
-	goroutinesPerIteration := 200
-	operationsPerGoroutine := 3
-
-	for i := 0; i < b.N; i += goroutinesPerIteration {
-		var wg sync.WaitGroup
-		var startBarrier sync.WaitGroup
-		startBarrier.Add(1)
-
-		remaining := b.N - i
-		if remaining > goroutinesPerIteration {
-			remaining = goroutinesPerIteration
-		}
-
-		for j := 0; j < remaining; j++ {
-			wg.Add(1)
-			go func(goroutineID int) {
-				defer wg.Done()
-				startBarrier.Wait() // Synchronize start for maximum contention
-
-				for k := 0; k < operationsPerGoroutine; k++ {
-					// Same operations as sharded version
-					hotElement := hotElements[k%len(hotElements)]
-					set.Contains(hotElement)
-					set.Insert(fmt.Sprintf("%s-variant-%d", hotElement, goroutineID))
-					set.RandomElement()
-				}
-			}(i + j)
-		}
-		startBarrier.Done() // Release all goroutines simultaneously
-		wg.Wait()
-	}
-}
-
-// Shard count comparison benchmarks
-func BenchmarkShardCountComparison8(b *testing.B) {
-	set := NewHashSetWithShards[string](8)
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		i := 0
-		for pb.Next() {
-			set.Insert(fmt.Sprintf("item-%d", i))
-			i++
-		}
-	})
-}
-
-func BenchmarkShardCountComparison32(b *testing.B) {
-	set := NewHashSetWithShards[string](32)
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		i := 0
-		for pb.Next() {
-			set.Insert(fmt.Sprintf("item-%d", i))
-			i++
-		}
-	})
-}
-
-func BenchmarkShardCountComparison128(b *testing.B) {
-	set := NewHashSetWithShards[string](128)
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		i := 0
-		for pb.Next() {
-			set.Insert(fmt.Sprintf("item-%d", i))
-			i++
-		}
-	})
-}
+// Note: Previous comparison benchmarks were simplified to focus on HashSet performance
 
 // Burst pattern benchmark: Simulates sudden spikes of concurrent requests
-func BenchmarkBurstPatternSharded(b *testing.B) {
-	set := NewHashSetWithShards[string](32)
+func BenchmarkBurstPattern(b *testing.B) {
+	set := NewHashSet[string]()
 
 	// Pre-populate
 	for i := 0; i < 5000; i++ {
@@ -843,45 +671,9 @@ func BenchmarkBurstPatternSharded(b *testing.B) {
 	}
 }
 
-func BenchmarkBurstPatternGlobalLock(b *testing.B) {
-	set := NewGlobalLockHashSet[string]()
-
-	// Pre-populate
-	for i := 0; i < 5000; i++ {
-		set.Insert(fmt.Sprintf("base-%d", i))
-	}
-
-	b.ResetTimer()
-
-	// Simulate burst patterns: sudden spikes of many concurrent operations
-	burstsPerIteration := 10
-	goroutinesPerBurst := 50
-	operationsPerGoroutine := 2
-
-	for i := 0; i < b.N; i += burstsPerIteration * goroutinesPerBurst * operationsPerGoroutine {
-		for burst := 0; burst < burstsPerIteration; burst++ {
-			var wg sync.WaitGroup
-
-			for j := 0; j < goroutinesPerBurst; j++ {
-				wg.Add(1)
-				go func(burstID, goroutineID int) {
-					defer wg.Done()
-
-					for k := 0; k < operationsPerGoroutine; k++ {
-						// Same operations as sharded version
-						set.Contains(fmt.Sprintf("base-%d", (burstID*goroutineID+k)%5000))
-						set.Insert(fmt.Sprintf("burst-%d-%d-%d", burstID, goroutineID, k))
-					}
-				}(burst, j)
-			}
-			wg.Wait()
-		}
-	}
-}
-
-// Comparison: B.RunParallel versions (sustained parallel load)
-func BenchmarkSustainedParallelSharded(b *testing.B) {
-	set := NewHashSetWithShards[string](32)
+// Sustained parallel load benchmark using B.RunParallel
+func BenchmarkSustainedParallel(b *testing.B) {
+	set := NewHashSet[string]()
 
 	// Pre-populate
 	for i := 0; i < 1000; i++ {
@@ -892,30 +684,7 @@ func BenchmarkSustainedParallelSharded(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			// Similar operations to web server pattern but sustained
-			set.Contains(fmt.Sprintf("hot-data-%d", (i*7)%1000))
-			set.Insert(fmt.Sprintf("session-%d", i))
-			if i%2 == 0 {
-				set.RandomElement()
-			}
-			i++
-		}
-	})
-}
-
-func BenchmarkSustainedParallelGlobalLock(b *testing.B) {
-	set := NewGlobalLockHashSet[string]()
-
-	// Pre-populate
-	for i := 0; i < 1000; i++ {
-		set.Insert(fmt.Sprintf("hot-data-%d", i))
-	}
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		i := 0
-		for pb.Next() {
-			// Same operations as sharded version
+			// Mix of operations similar to web server pattern but sustained
 			set.Contains(fmt.Sprintf("hot-data-%d", (i*7)%1000))
 			set.Insert(fmt.Sprintf("session-%d", i))
 			if i%2 == 0 {
@@ -943,7 +712,7 @@ func TestHashSetPersistenceBasic(t *testing.T) {
 		MaxRetries:       3,
 	}
 
-	set := NewHashSetWithPersistence[string](8, config)
+	set := NewHashSetWithPersistence[string](config)
 	defer set.Close()
 
 	// Add some data
@@ -970,7 +739,7 @@ func TestHashSetPersistenceBasic(t *testing.T) {
 	}
 
 	// Create new HashSet and restore from disk
-	set2 := NewHashSetWithShards[string](8)
+	set2 := NewHashSet[string]()
 	err := set2.LoadFromDisk(tempFile)
 	if err != nil {
 		t.Fatalf("Failed to load from disk: %v", err)
@@ -999,7 +768,7 @@ func TestHashSetPersistenceConsistency(t *testing.T) {
 		MaxRetries:       3,
 	}
 
-	set := NewHashSetWithPersistence[int](16, config)
+	set := NewHashSetWithPersistence[int](config)
 	defer set.Close()
 
 	// Concurrent operations while snapshots are happening
@@ -1042,7 +811,7 @@ func TestHashSetPersistenceConsistency(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Restore and verify consistency
-	set2 := NewHashSetWithShards[int](16)
+	set2 := NewHashSet[int]()
 	err = set2.LoadFromDisk(tempFile)
 	if err != nil {
 		t.Fatalf("Failed to load from disk: %v", err)
@@ -1073,7 +842,7 @@ func TestHashSetPersistenceAtomicWrites(t *testing.T) {
 		MaxRetries: 1, // Only one attempt for this test
 	}
 
-	set := NewHashSetWithPersistence[string](4, config)
+	set := NewHashSetWithPersistence[string](config)
 	defer set.Close()
 
 	// Add initial data
@@ -1103,7 +872,7 @@ func TestHashSetPersistenceAtomicWrites(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Verify file is still valid and contains all data
-	set2 := NewHashSetWithShards[string](4)
+	set2 := NewHashSet[string]()
 	err = set2.LoadFromDisk(tempFile)
 	if err != nil {
 		t.Fatalf("Failed to load after second snapshot: %v", err)
@@ -1136,7 +905,7 @@ func TestHashSetPersistenceVersioning(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	set := NewHashSetWithPersistence[string](4, config)
+	set := NewHashSetWithPersistence[string](config)
 	defer set.Close()
 
 	// Initial version should be 0
@@ -1161,22 +930,17 @@ func TestHashSetPersistenceVersioning(t *testing.T) {
 	}
 
 	// Verify snapshots contain correct data
-	if len(snapshot1.Shards) == 0 {
-		t.Error("Snapshot1 has no shards")
+	if len(snapshot1.Elements) == 0 {
+		t.Error("Snapshot1 has no elements")
 	}
 
-	if len(snapshot2.Shards) == 0 {
-		t.Error("Snapshot2 has no shards")
+	if len(snapshot2.Elements) == 0 {
+		t.Error("Snapshot2 has no elements")
 	}
 
 	// Count elements in snapshots
-	count1, count2 := 0, 0
-	for _, shard := range snapshot1.Shards {
-		count1 += len(shard.Elements)
-	}
-	for _, shard := range snapshot2.Shards {
-		count2 += len(shard.Elements)
-	}
+	count1 := len(snapshot1.Elements)
+	count2 := len(snapshot2.Elements)
 
 	if count1 != 1 {
 		t.Errorf("Expected 1 element in snapshot1, got %d", count1)
@@ -1198,7 +962,7 @@ func TestHashSetPersistenceNoPerformanceImpact(t *testing.T) {
 		MaxRetries:       3,
 	}
 
-	set := NewHashSetWithPersistence[int](8, config)
+	set := NewHashSetWithPersistence[int](config)
 	defer set.Close()
 
 	// Perform many operations while snapshots are happening frequently
@@ -1225,37 +989,4 @@ func TestHashSetPersistenceNoPerformanceImpact(t *testing.T) {
 	}
 
 	t.Logf("Completed %d operations in %v with frequent snapshots", numOperations, duration)
-}
-
-func TestHashSetPersistenceShardCountMismatch(t *testing.T) {
-	tempFile := filepath.Join(os.TempDir(), "hashset_test_mismatch.json")
-	defer os.Remove(tempFile)
-
-	// Create set with 4 shards
-	config := PersistenceConfig{
-		Enabled:    true,
-		FilePath:   tempFile,
-		MaxRetries: 3,
-	}
-
-	set1 := NewHashSetWithPersistence[string](4, config)
-	set1.Insert("test")
-	err := set1.TriggerSnapshot()
-	if err != nil {
-		t.Fatalf("Snapshot failed: %v", err)
-	}
-	time.Sleep(50 * time.Millisecond)
-	set1.Close()
-
-	// Try to load with 8 shards (mismatch)
-	set2 := NewHashSetWithShards[string](8)
-	err = set2.LoadFromDisk(tempFile)
-
-	if err == nil {
-		t.Error("Expected error for shard count mismatch, got nil")
-	}
-
-	if !strings.Contains(fmt.Sprintf("%v", err), "shard count mismatch") {
-		t.Errorf("Expected shard count mismatch error, got: %v", err)
-	}
 }
