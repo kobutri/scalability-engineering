@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -23,180 +26,471 @@ func init() {
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
 	mu.RLock()
+	size := demoSet.Size()
 	stats := demoSet.Stats()
-	elements := demoSet.ToSlice()
 	mu.RUnlock()
 
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Thread-Safe HashSet Demo</title>
+    <meta charset="UTF-8">
+    <title>Thread-Safe Generic HashSet Demo</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .stats { background: #f0f0f0; padding: 15px; margin: 10px 0; border-radius: 5px; }
-        .operations { margin: 20px 0; }
-        .button { background: #007cba; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; margin: 5px; display: inline-block; }
-        .button:hover { background: #005a8b; }
-        .elements { background: #e8f4f8; padding: 15px; margin: 10px 0; border-radius: 5px; }
-        pre { background: #f8f8f8; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            margin: 20px; 
+            background-color: #f8f9fa;
+        }
+        .container { 
+            max-width: 1000px; 
+            margin: 0 auto; 
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #007cba;
+        }
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        .actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 30px 0;
+        }
+        .action-btn {
+            display: block;
+            padding: 12px 20px;
+            background: #007cba;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            text-align: center;
+            transition: background-color 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .action-btn:hover { background: #005a8b; }
+        .action-btn.secondary { background: #6c757d; }
+        .action-btn.secondary:hover { background: #545b62; }
+        .action-btn.danger { background: #dc3545; }
+        .action-btn.danger:hover { background: #c82333; }
+        .form-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+        }
+        .form-section h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        input[type="text"], input[type="number"] {
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .symbol {
+            font-weight: bold;
+            color: #007cba;
+        }
+        .symbol.success { color: #28a745; }
+        .symbol.warning { color: #ffc107; }
+        .symbol.danger { color: #dc3545; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Thread-Safe HashSet Demo (Generic)</h1>
+        <div class="header">
+            <h1><span class="symbol">&gt;</span> Thread-Safe Generic HashSet Demo</h1>
+            <p>Type: <code>HashSet[string]</code> with fine-grained locking</p>
+        </div>
         
         <div class="stats">
-            <h3>Current Statistics</h3>
-            <p><strong>Total Elements:</strong> %d</p>
-            <p><strong>Shard Count:</strong> %d</p>
-            <p><strong>Load Factor:</strong> %.2f elements per shard</p>
-            <p><strong>Elements per Shard:</strong> %v</p>
+            <div class="stat-item">
+                <div class="stat-number">%d</div>
+                <div class="stat-label">Total Elements</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">%d</div>
+                <div class="stat-label">Shards</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">%.2f</div>
+                <div class="stat-label">Load Factor</div>
+            </div>
         </div>
 
-        <div class="elements">
-            <h3>Current Elements (string type)</h3>
-            <pre>%v</pre>
+        <div class="actions">
+            <a href="/random" class="action-btn">
+                <span class="symbol">&clubs;</span> Get Random Element
+            </a>
+            <a href="/stats" class="action-btn secondary">
+                <span class="symbol">&equiv;</span> Detailed Statistics
+            </a>
+            <a href="/test" class="action-btn secondary">
+                <span class="symbol">&rArr;</span> Concurrency Test
+            </a>
+            <a href="/compare" class="action-btn secondary">
+                <span class="symbol">&harr;</span> Performance Comparison
+            </a>
+            <a href="/clear" class="action-btn danger" onclick="return confirm('Clear all elements?')">
+                <span class="symbol">&times;</span> Clear All
+            </a>
         </div>
 
-        <div class="operations">
-            <h3>Operations</h3>
-            <a href="/insert" class="button">Add Random Element</a>
-            <a href="/remove" class="button">Remove Random Element</a>
-            <a href="/random" class="button">Get Random Element</a>
-            <a href="/clear" class="button">Clear All</a>
-            <a href="/populate" class="button">Add 100 Random Items</a>
-            <a href="/stats" class="button">Detailed Stats</a>
-            <a href="/test" class="button">Run Concurrency Test</a>
-            <a href="/compare" class="button" style="background: #e74c3c;">Compare vs Global Lock</a>
-        </div>
-
-        <div>
-            <h3>Manual Operations</h3>
-            <form action="/insert" method="get" style="display: inline;">
-                <input type="text" name="element" placeholder="Element to insert">
-                <input type="submit" value="Insert" class="button">
+        <div class="form-section">
+            <h3><span class="symbol success">+</span> Insert Elements</h3>
+            <form action="/insert" method="post" style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" name="elements" placeholder="apple,banana,cherry" style="flex: 1;" required>
+                <button type="submit" class="action-btn" style="margin: 0;">Add Elements</button>
             </form>
-            
-            <form action="/remove" method="get" style="display: inline;">
-                <input type="text" name="element" placeholder="Element to remove">
-                <input type="submit" value="Remove" class="button">
+        </div>
+
+        <div class="form-section">
+            <h3><span class="symbol danger">-</span> Remove Elements</h3>
+            <form action="/remove" method="post" style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" name="elements" placeholder="apple,banana" style="flex: 1;" required>
+                <button type="submit" class="action-btn danger" style="margin: 0;">Remove Elements</button>
             </form>
         </div>
 
-        <div style="margin-top: 30px;">
-            <h3>About This HashSet (Generic Version)</h3>
-            <ul>
-                <li><strong>Type-Safe:</strong> Uses Go generics with HashSet[string] type</li>
-                <li><strong>Thread-Safe:</strong> Uses fine-grained locking with sharding</li>
-                <li><strong>O(1) Operations:</strong> Insert, Remove, Contains, and Random access</li>
-                <li><strong>Efficient Random Access:</strong> Using contiguous arrays within shards</li>
-                <li><strong>Swap-and-Pop Removal:</strong> Maintains O(1) removal complexity</li>
-                <li><strong>Configurable Sharding:</strong> Optimized for concurrent workloads</li>
-                <li><strong>Zero Boxing Overhead:</strong> Direct type storage without interface{}</li>
-            </ul>
+        <div class="form-section">
+            <h3><span class="symbol">&infin;</span> Bulk Operations</h3>
+            <form action="/populate" method="post" style="display: flex; gap: 10px; align-items: center;">
+                <input type="number" name="count" placeholder="1000" min="1" max="100000" value="1000">
+                <button type="submit" class="action-btn secondary" style="margin: 0;">Populate with Random Data</button>
+            </form>
+        </div>
+
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #dee2e6; text-align: center; color: #6c757d;">
+            <p><strong>Features:</strong> O(1) operations, thread-safe, sharded locking, zero-boxing generics</p>
         </div>
     </div>
 </body>
-</html>
-`, stats.TotalElements, stats.ShardCount, stats.LoadFactor, stats.ElementsPerShard, elements)
+</html>`, size, stats.ShardCount, stats.LoadFactor)
 }
 
 func insertHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	element := r.URL.Query().Get("element")
-	if element == "" {
-		element = fmt.Sprintf("item-%d", time.Now().UnixNano())
+
+	var added int
+	if r.Method == "POST" {
+		// Handle form submission
+		r.ParseForm()
+		elementsStr := r.FormValue("elements")
+		if elementsStr != "" {
+			elements := strings.Split(elementsStr, ",")
+			mu.Lock()
+			for _, elem := range elements {
+				elem = strings.TrimSpace(elem)
+				if elem != "" && demoSet.Insert(elem) {
+					added++
+				}
+			}
+			mu.Unlock()
+		}
+	} else {
+		// Handle single element from URL parameter (legacy)
+		element := r.URL.Query().Get("element")
+		if element == "" {
+			element = fmt.Sprintf("item-%d", time.Now().UnixNano()%10000)
+		}
+
+		mu.Lock()
+		if demoSet.Insert(element) {
+			added = 1
+		}
+		mu.Unlock()
 	}
 
-	mu.Lock()
-	added := demoSet.Insert(element)
-	mu.Unlock()
 	elapsed := time.Since(start)
 
-	w.Header().Set("Content-Type", "text/plain")
+	// Set redirect header before writing response
 	w.Header().Set("Refresh", "2; url=/")
-	if added {
-		fmt.Fprintf(w, "Successfully inserted: %s\nOperation took: %v\nRedirecting...", element, elapsed)
-	} else {
-		fmt.Fprintf(w, "Element already exists: %s\nOperation took: %v\nRedirecting...", element, elapsed)
-	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	fmt.Fprintf(w, `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Insert Result</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px; text-align: center; }
+        .result { background: #d4edda; color: #155724; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 500px; }
+        .performance { color: #6c757d; font-size: 0.9em; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="result">
+        <h2>&#10003; Insert Complete</h2>
+        <p>Added %d new elements</p>
+        <div class="performance">
+            Operation took: %v<br>
+            Throughput: %.0f ops/sec<br>
+            Redirecting in 2 seconds...
+        </div>
+    </div>
+</body>
+</html>`, added, elapsed, float64(added)/elapsed.Seconds())
 }
 
 func removeHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	element := r.URL.Query().Get("element")
 
-	mu.Lock()
-	if element == "" {
-		// Remove random element
-		if randomElem, ok := demoSet.RandomElement(); ok {
-			element = randomElem
-			demoSet.Remove(randomElem)
+	var removed int
+	if r.Method == "POST" {
+		// Handle form submission
+		r.ParseForm()
+		elementsStr := r.FormValue("elements")
+		if elementsStr != "" {
+			elements := strings.Split(elementsStr, ",")
+			mu.Lock()
+			for _, elem := range elements {
+				elem = strings.TrimSpace(elem)
+				if elem != "" && demoSet.Remove(elem) {
+					removed++
+				}
+			}
+			mu.Unlock()
 		}
 	} else {
-		demoSet.Remove(element)
+		// Handle single element from URL parameter or random removal
+		element := r.URL.Query().Get("element")
+		if element == "" {
+			mu.RLock()
+			if randomElem, ok := demoSet.RandomElement(); ok {
+				element = randomElem
+			}
+			mu.RUnlock()
+		}
+
+		if element != "" {
+			mu.Lock()
+			if demoSet.Remove(element) {
+				removed = 1
+			}
+			mu.Unlock()
+		}
 	}
-	mu.Unlock()
+
 	elapsed := time.Since(start)
 
-	w.Header().Set("Content-Type", "text/plain")
+	// Set redirect header before writing response
 	w.Header().Set("Refresh", "2; url=/")
-	if element != "" {
-		fmt.Fprintf(w, "Removed: %s\nOperation took: %v\nRedirecting...", element, elapsed)
-	} else {
-		fmt.Fprintf(w, "No elements to remove\nOperation took: %v\nRedirecting...", elapsed)
-	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	fmt.Fprintf(w, `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Remove Result</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px; text-align: center; }
+        .result { background: #f8d7da; color: #721c24; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 500px; }
+        .performance { color: #6c757d; font-size: 0.9em; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="result">
+        <h2>&#10003; Remove Complete</h2>
+        <p>Removed %d elements</p>
+        <div class="performance">
+            Operation took: %v<br>
+            Throughput: %.0f ops/sec<br>
+            Redirecting in 2 seconds...
+        </div>
+    </div>
+</body>
+</html>`, removed, elapsed, float64(removed)/elapsed.Seconds())
 }
 
 func randomHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
+
 	mu.RLock()
 	element, ok := demoSet.RandomElement()
+	size := demoSet.Size()
 	mu.RUnlock()
+
 	elapsed := time.Since(start)
 
-	w.Header().Set("Content-Type", "text/plain")
-	w.Header().Set("Refresh", "2; url=/")
+	w.Header().Set("Refresh", "3; url=/")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
 	if ok {
-		fmt.Fprintf(w, "Random element: %v\nOperation took: %v\nRedirecting...", element, elapsed)
+		fmt.Fprintf(w, `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Random Element</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px; text-align: center; }
+        .result { background: #cce5ff; color: #004080; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 500px; }
+        .element { font-size: 1.5em; font-weight: bold; margin: 15px 0; }
+        .performance { color: #6c757d; font-size: 0.9em; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="result">
+        <h2>&clubs; Random Element</h2>
+        <div class="element">"%s"</div>
+        <p>Selected from %d total elements</p>
+        <div class="performance">
+            Operation took: %v<br>
+            Redirecting in 3 seconds...
+        </div>
+    </div>
+</body>
+</html>`, element, size, elapsed)
 	} else {
-		fmt.Fprintf(w, "Set is empty\nOperation took: %v\nRedirecting...", elapsed)
+		fmt.Fprintf(w, `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Random Element</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px; text-align: center; }
+        .result { background: #f8d7da; color: #721c24; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 500px; }
+        .performance { color: #6c757d; font-size: 0.9em; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="result">
+        <h2>! No Elements</h2>
+        <p>Set is empty - no random element available</p>
+        <div class="performance">
+            Operation took: %v<br>
+            Redirecting in 3 seconds...
+        </div>
+    </div>
+</body>
+</html>`, elapsed)
 	}
 }
 
 func clearHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
+
 	mu.Lock()
 	oldSize := demoSet.Size()
 	demoSet.Clear()
 	mu.Unlock()
+
 	elapsed := time.Since(start)
 
-	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Refresh", "2; url=/")
-	fmt.Fprintf(w, "Set cleared (%d elements removed)\nOperation took: %v\nRedirecting...", oldSize, elapsed)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	fmt.Fprintf(w, `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Clear Complete</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px; text-align: center; }
+        .result { background: #fff3cd; color: #856404; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 500px; }
+        .performance { color: #6c757d; font-size: 0.9em; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="result">
+        <h2>&#10003; Clear Complete</h2>
+        <p>Removed all %d elements</p>
+        <div class="performance">
+            Operation took: %v<br>
+            Throughput: %.0f ops/sec<br>
+            Redirecting in 2 seconds...
+        </div>
+    </div>
+</body>
+</html>`, oldSize, elapsed, float64(oldSize)/elapsed.Seconds())
 }
 
 func populateHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
+
+	count := 1000 // default
+	if r.Method == "POST" {
+		r.ParseForm()
+		if countStr := r.FormValue("count"); countStr != "" {
+			if parsed, err := strconv.Atoi(countStr); err == nil && parsed > 0 && parsed <= 100000 {
+				count = parsed
+			}
+		}
+	}
+
 	mu.Lock()
 	added := 0
-	for i := 0; i < 100; i++ {
+	for i := 0; i < count; i++ {
 		element := fmt.Sprintf("random-%d-%d", time.Now().UnixNano(), i)
 		if demoSet.Insert(element) {
 			added++
 		}
 	}
 	mu.Unlock()
+
 	elapsed := time.Since(start)
 
-	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Refresh", "2; url=/")
-	fmt.Fprintf(w, "Added %d new elements\nOperation took: %v\nThroughput: %.0f ops/sec\nRedirecting...",
-		added, elapsed, float64(added)/elapsed.Seconds())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	fmt.Fprintf(w, `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Populate Complete</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px; text-align: center; }
+        .result { background: #d1ecf1; color: #0c5460; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 500px; }
+        .performance { color: #6c757d; font-size: 0.9em; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="result">
+        <h2>&infin; Populate Complete</h2>
+        <p>Added %d new elements</p>
+        <div class="performance">
+            Operation took: %v<br>
+            Throughput: %.0f ops/sec<br>
+            Redirecting in 2 seconds...
+        </div>
+    </div>
+</body>
+</html>`, added, elapsed, float64(added)/elapsed.Seconds())
 }
 
 func statsHandler(w http.ResponseWriter, r *http.Request) {
@@ -204,11 +498,12 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	stats := demoSet.Stats()
 	mu.RUnlock()
 
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>HashSet Detailed Statistics</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
@@ -251,11 +546,12 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func testHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>Concurrency Test</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
@@ -326,11 +622,12 @@ func testHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func compareHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>Performance Comparison</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
@@ -657,6 +954,21 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "persistence-demo":
+			runPersistenceDemo()
+			return
+		case "show-json":
+			showJSONFormat()
+			return
+		}
+	}
+
+	webServerDemo()
+}
+
+func webServerDemo() {
 	http.HandleFunc("/", homeHandler)
 	http.HandleFunc("/insert", insertHandler)
 	http.HandleFunc("/remove", removeHandler)

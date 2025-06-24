@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,12 +26,40 @@ func (d defaultHasher[T]) Hash(key T) uint32 {
 	return h.Sum32()
 }
 
-// HashSet is the main thread-safe set structure
+// Snapshot represents a consistent point-in-time view of the HashSet
+type Snapshot[T comparable] struct {
+	Version   int64              `json:"version"`
+	Timestamp time.Time          `json:"timestamp"`
+	Shards    []ShardSnapshot[T] `json:"shards"`
+}
+
+// ShardSnapshot represents the state of a single shard
+type ShardSnapshot[T comparable] struct {
+	Elements []T `json:"elements"`
+}
+
+// PersistenceConfig controls durability behavior
+type PersistenceConfig struct {
+	Enabled          bool          `json:"enabled"`
+	FilePath         string        `json:"file_path"`
+	SnapshotInterval time.Duration `json:"snapshot_interval"`
+	MaxRetries       int           `json:"max_retries"`
+}
+
+// HashSet represents a thread-safe set with O(1) random access and durability
 type HashSet[T comparable] struct {
 	shards     []shard[T]
 	shardCount uint32
 	hasher     Hasher[T]
 	size       int64 // atomic counter for total size
+
+	// Persistence fields
+	persistence    PersistenceConfig
+	persistChan    chan struct{}
+	stopChan       chan struct{}
+	persistWG      sync.WaitGroup
+	currentVersion int64
+	versionMutex   sync.RWMutex
 }
 
 // shard represents a single shard with its own lock
@@ -500,4 +531,261 @@ func (h *GlobalLockHashSet[T]) InsertAll(elements ...T) int {
 		}
 	}
 	return added
+}
+
+// =============================================================================
+// PERSISTENCE METHODS
+// =============================================================================
+
+// NewHashSetWithPersistence creates a HashSet with persistence enabled
+func NewHashSetWithPersistence[T comparable](shardCount int, config PersistenceConfig) *HashSet[T] {
+	h := NewHashSetWithShards[T](shardCount)
+	if config.Enabled {
+		h.EnablePersistence(config)
+	}
+	return h
+}
+
+// EnablePersistence activates durability for the HashSet
+func (h *HashSet[T]) EnablePersistence(config PersistenceConfig) error {
+	if h.persistence.Enabled {
+		return fmt.Errorf("persistence already enabled")
+	}
+
+	// Set default values
+	if config.MaxRetries == 0 {
+		config.MaxRetries = 3
+	}
+	if config.SnapshotInterval == 0 {
+		config.SnapshotInterval = 30 * time.Second
+	}
+
+	h.persistence = config
+	h.persistChan = make(chan struct{}, 1)
+	h.stopChan = make(chan struct{})
+
+	// Start background persistence worker
+	h.persistWG.Add(1)
+	go h.persistenceWorker()
+
+	return nil
+}
+
+// CreateSnapshot creates a consistent point-in-time snapshot
+func (h *HashSet[T]) CreateSnapshot() *Snapshot[T] {
+	// Increment version atomically
+	h.versionMutex.Lock()
+	h.currentVersion++
+	version := h.currentVersion
+	h.versionMutex.Unlock()
+
+	snapshot := &Snapshot[T]{
+		Version:   version,
+		Timestamp: time.Now(),
+		Shards:    make([]ShardSnapshot[T], h.shardCount),
+	}
+
+	// Lock all shards to ensure consistency
+	// We do this in order to prevent deadlock
+	for i := range h.shards {
+		h.shards[i].mu.RLock()
+	}
+
+	// Copy data from all shards
+	for i := range h.shards {
+		shard := &h.shards[i]
+		snapshot.Shards[i] = ShardSnapshot[T]{
+			Elements: make([]T, len(shard.elements)),
+		}
+		copy(snapshot.Shards[i].Elements, shard.elements)
+	}
+
+	// Unlock all shards
+	for i := range h.shards {
+		h.shards[i].mu.RUnlock()
+	}
+
+	return snapshot
+}
+
+// TriggerSnapshot manually triggers a snapshot to be persisted
+func (h *HashSet[T]) TriggerSnapshot() error {
+	if !h.persistence.Enabled {
+		return fmt.Errorf("persistence not enabled")
+	}
+
+	// Non-blocking trigger
+	select {
+	case h.persistChan <- struct{}{}:
+		return nil
+	default:
+		return fmt.Errorf("persistence already in progress")
+	}
+}
+
+// persistenceWorker runs in background handling periodic snapshots
+func (h *HashSet[T]) persistenceWorker() {
+	defer h.persistWG.Done()
+
+	ticker := time.NewTicker(h.persistence.SnapshotInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-h.stopChan:
+			// Final snapshot before shutdown
+			h.persistSnapshot()
+			return
+
+		case <-ticker.C:
+			// Periodic snapshot
+			h.persistSnapshot()
+
+		case <-h.persistChan:
+			// Manual trigger
+			h.persistSnapshot()
+		}
+	}
+}
+
+// persistSnapshot performs the actual persistence operation
+func (h *HashSet[T]) persistSnapshot() {
+	snapshot := h.CreateSnapshot()
+
+	// Retry logic for failed writes
+	var err error
+	for attempt := 0; attempt < h.persistence.MaxRetries; attempt++ {
+		err = h.writeSnapshotToDisk(snapshot)
+		if err == nil {
+			break
+		}
+
+		// Exponential backoff on retry
+		if attempt < h.persistence.MaxRetries-1 {
+			time.Sleep(time.Duration(1<<attempt) * time.Second)
+		}
+	}
+
+	if err != nil {
+		fmt.Printf("Failed to persist snapshot after %d attempts: %v\n",
+			h.persistence.MaxRetries, err)
+	}
+}
+
+// writeSnapshotToDisk atomically writes snapshot to disk
+func (h *HashSet[T]) writeSnapshotToDisk(snapshot *Snapshot[T]) error {
+	// Create directory if it doesn't exist
+	dir := filepath.Dir(h.persistence.FilePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Write to temporary file first (atomic write pattern)
+	tempFile := h.persistence.FilePath + ".tmp"
+
+	file, err := os.Create(tempFile)
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer file.Close()
+
+	// Encode to JSON
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ") // Pretty printing
+	if err := encoder.Encode(snapshot); err != nil {
+		os.Remove(tempFile) // Clean up on failure
+		return fmt.Errorf("failed to encode snapshot: %w", err)
+	}
+
+	// Ensure data is written to disk
+	if err := file.Sync(); err != nil {
+		os.Remove(tempFile)
+		return fmt.Errorf("failed to sync file: %w", err)
+	}
+
+	file.Close()
+
+	// Atomic rename (this is the atomic operation)
+	if err := os.Rename(tempFile, h.persistence.FilePath); err != nil {
+		os.Remove(tempFile)
+		return fmt.Errorf("failed to rename temp file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadFromDisk restores the HashSet from a persisted snapshot
+func (h *HashSet[T]) LoadFromDisk(filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open snapshot file: %w", err)
+	}
+	defer file.Close()
+
+	var snapshot Snapshot[T]
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&snapshot); err != nil {
+		return fmt.Errorf("failed to decode snapshot: %w", err)
+	}
+
+	// Validate snapshot structure
+	if len(snapshot.Shards) != int(h.shardCount) {
+		return fmt.Errorf("shard count mismatch: expected %d, got %d",
+			h.shardCount, len(snapshot.Shards))
+	}
+
+	// Clear current data
+	h.Clear()
+
+	// Restore data to shards
+	for i, shardSnapshot := range snapshot.Shards {
+		shard := &h.shards[i]
+
+		shard.mu.Lock()
+		shard.elements = make([]T, len(shardSnapshot.Elements))
+		copy(shard.elements, shardSnapshot.Elements)
+
+		// Rebuild index map
+		shard.indexMap = make(map[T]int, len(shardSnapshot.Elements))
+		for idx, element := range shard.elements {
+			shard.indexMap[element] = idx
+		}
+		shard.mu.Unlock()
+	}
+
+	// Update size counter
+	totalSize := int64(0)
+	for _, shardSnapshot := range snapshot.Shards {
+		totalSize += int64(len(shardSnapshot.Elements))
+	}
+	atomic.StoreInt64(&h.size, totalSize)
+
+	// Update version
+	h.versionMutex.Lock()
+	h.currentVersion = snapshot.Version
+	h.versionMutex.Unlock()
+
+	return nil
+}
+
+// GetCurrentVersion returns the current version number
+func (h *HashSet[T]) GetCurrentVersion() int64 {
+	h.versionMutex.RLock()
+	defer h.versionMutex.RUnlock()
+	return h.currentVersion
+}
+
+// Close properly shuts down persistence and ensures final snapshot
+func (h *HashSet[T]) Close() error {
+	if !h.persistence.Enabled {
+		return nil
+	}
+
+	// Signal shutdown
+	close(h.stopChan)
+
+	// Wait for persistence worker to finish
+	h.persistWG.Wait()
+
+	return nil
 }
