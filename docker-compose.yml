@@ -15,12 +15,30 @@ services:
       - ${BOOTSTRAP_VOLUME_MOUNT:-./bootstrap:/app}
       # Mount data directory for persistence
       - bootstrap_data:/data
+      # Mount Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount compose file for client scaling
+      - ./docker-compose.yml:/docker-compose.yml:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
       timeout: 10s
       retries: 3
       start_period: 40s
       interval: 30s
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "${CLIENT_PORT:-9090}:9090"
+    environment:
+      - CLIENT_NAME=${CLIENT_NAME:-demo-client}
+      - BOOTSTRAP_URL=${BOOTSTRAP_URL:-http://bootstrap:8080}
+      - PORT=9090
+    depends_on:
+      - bootstrap
+    restart: unless-stopped
 
 volumes:
   bootstrap_data:

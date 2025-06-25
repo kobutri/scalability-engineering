@@ -1,0 +1,369 @@
+package main
+
+import "fmt"
+
+const morphSwap = "morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}"
+
+type ClientStatus struct {
+	ClientName      string
+	ContainerID     string
+	IdentitySource  string
+	BootstrapURL    string
+	Connected       bool
+	Names           []string
+	NamesCount      int
+	LastUpdate      string
+	ConnectionError string
+	CurrentTime     string
+}
+
+templ clientPage(status ClientStatus) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Bootstrap Client - { status.ClientName }</title>
+			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.5/dist/htmx.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph-ext.js"></script>
+			<style>
+			body {
+				font-family: monospace;
+				margin: 0;
+				padding: 10px;
+				background: #f5f5f5;
+				font-size: 14px;
+			}
+			.container {
+				max-width: 1400px;
+			}
+			.header {
+				background: #fff;
+				border: 1px solid #ddd;
+				padding: 10px;
+				margin-bottom: 10px;
+			}
+			.header h1 {
+				margin: 0;
+				font-size: 20px;
+			}
+			.grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 10px;
+				margin-bottom: 10px;
+			}
+			.grid.single-column {
+				grid-template-columns: 1fr;
+			}
+			.panel {
+				background: #fff;
+				border: 1px solid #ddd;
+				padding: 10px;
+			}
+			.panel h3 {
+				margin: 0 0 10px 0;
+				font-size: 14px;
+				border-bottom: 1px solid #eee;
+				padding-bottom: 5px;
+			}
+			.stats {
+				display: grid;
+				grid-template-columns: repeat(4, 1fr);
+				gap: 10px;
+				margin-bottom: 10px;
+			}
+			.stat {
+				background: #fff;
+				border: 1px solid #ddd;
+				padding: 10px;
+				text-align: center;
+			}
+			.stat-value {
+				font-size: 18px;
+				font-weight: bold;
+			}
+			.stat-label {
+				font-size: 12px;
+				color: #666;
+			}
+			.scrollable {
+				max-height: 400px;
+				overflow-y: auto;
+				border: 1px solid #ddd;
+				background: #fff;
+			}
+			.list-item {
+				padding: 8px 12px;
+				border-bottom: 1px solid #eee;
+			}
+			.list-item:last-child {
+				border-bottom: none;
+			}
+			.list-item:nth-child(even) {
+				background: #f9f9f9;
+			}
+			table {
+				width: 100%;
+				border-collapse: collapse;
+				font-size: 12px;
+			}
+			th, td {
+				padding: 8px;
+				text-align: left;
+				border-bottom: 1px solid #eee;
+			}
+			th {
+				background: #f9f9f9;
+				font-weight: bold;
+				position: sticky;
+				top: 0;
+			}
+			.form-group {
+				margin-bottom: 10px;
+			}
+			.form-group label {
+				display: block;
+				margin-bottom: 2px;
+				font-size: 12px;
+			}
+			input, select, button {
+				padding: 8px 12px;
+				border: 1px solid #ddd;
+				font-family: monospace;
+				font-size: 12px;
+			}
+			button {
+				background: #fff;
+				cursor: pointer;
+				border-radius: 3px;
+			}
+			button:hover {
+				background: #f0f0f0;
+			}
+			button:disabled {
+				background: #f5f5f5;
+				color: #999;
+				cursor: not-allowed;
+			}
+			.btn-primary {
+				background: #e6f3ff;
+				color: #0066cc;
+			}
+			.btn-primary:hover:not(:disabled) {
+				background: #cce6ff;
+			}
+			.btn-danger {
+				background: #ffe6e6;
+				color: #d00;
+			}
+			.btn-danger:hover:not(:disabled) {
+				background: #ffcccc;
+			}
+			.btn-success {
+				background: #e6ffe6;
+				color: #060;
+			}
+			.btn-success:hover:not(:disabled) {
+				background: #ccffcc;
+			}
+			.connection-status {
+				padding: 8px 12px;
+				border-radius: 3px;
+				font-weight: bold;
+				margin-bottom: 10px;
+			}
+			.connection-status.connected {
+				background: #e6ffe6;
+				color: #060;
+			}
+			.connection-status.disconnected {
+				background: #ffe6e6;
+				color: #d00;
+			}
+			.error-message {
+				background: #ffe6e6;
+				color: #d00;
+				padding: 8px 12px;
+				border-radius: 3px;
+				margin-bottom: 10px;
+				font-size: 12px;
+			}
+			.control-buttons {
+				display: flex;
+				gap: 10px;
+				margin-bottom: 15px;
+			}
+			.control-buttons button {
+				flex: 1;
+			}
+		</style>
+		</head>
+		<body>
+			<div class="container">
+				<div class="header">
+					<h1>Bootstrap Client - { status.ClientName }</h1>
+				</div>
+				<!-- Auto-updating content -->
+				<div id="client-content" hx-get="/status-data" hx-trigger="every 3s" hx-swap={ morphSwap } hx-ext="morph">
+					@clientContent(status)
+				</div>
+			</div>
+		</body>
+	</html>
+}
+
+templ clientContent(status ClientStatus) {
+	<!-- Status info bar -->
+	<div style="background: #fff; border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+		<span>Bootstrap Server: { status.BootstrapURL } | Last Update: { status.LastUpdate }</span>
+		<span style="font-size: 12px;">Current Time: { status.CurrentTime }</span>
+	</div>
+
+	<!-- Stats section -->
+	<div class="stats">
+		<div class="stat">
+			<div class="stat-value">{ status.ClientName }</div>
+			<div class="stat-label">Client Name</div>
+		</div>
+		<div class="stat">
+			if status.Connected {
+				<div class="stat-value" style="color: green;">CONNECTED</div>
+			} else {
+				<div class="stat-value" style="color: red;">DISCONNECTED</div>
+			}
+			<div class="stat-label">Status</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ fmt.Sprintf("%d", status.NamesCount) }</div>
+			<div class="stat-label">Names Received</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ status.ContainerID[:8] }</div>
+			<div class="stat-label">Container ID</div>
+		</div>
+	</div>
+
+	<!-- Identity Information Panel -->
+	<div class="panel" style="margin-bottom: 10px;">
+		<h3>Client Identity Information</h3>
+		<div class="grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+			<div class="form-group">
+				<label>Client Name:</label>
+				<input type="text" value={ status.ClientName } disabled style="background: #f5f5f5;"/>
+			</div>
+			<div class="form-group">
+				<label>Container ID:</label>
+				<input type="text" value={ status.ContainerID } disabled style="background: #f5f5f5;"/>
+			</div>
+			<div class="form-group">
+				<label>Identity Source:</label>
+				<input type="text" value={ status.IdentitySource } disabled style="background: #f5f5f5;"/>
+			</div>
+		</div>
+		<div class="form-group">
+			<label>Bootstrap Server URL:</label>
+			<input type="text" value={ status.BootstrapURL } disabled style="background: #f5f5f5;"/>
+		</div>
+	</div>
+
+	<div class="grid">
+		<!-- Connection Control Panel -->
+		<div class="panel">
+			<h3>Connection Control</h3>
+			
+			<!-- Connection status indicator -->
+			if status.Connected {
+				<div class="connection-status connected">
+					● Connected to { status.BootstrapURL }
+				</div>
+			} else {
+				<div class="connection-status disconnected">
+					● Disconnected from { status.BootstrapURL }
+				</div>
+			}
+
+			<!-- Error message if any -->
+			if status.ConnectionError != "" {
+				<div class="error-message">
+					{ status.ConnectionError }
+				</div>
+			}
+
+			<!-- Control buttons -->
+			<div class="control-buttons" id="control-buttons-section">
+				<!-- Debug info -->
+				<div style="font-size: 10px; color: #666; margin-bottom: 5px;">
+					DEBUG: Connected={ fmt.Sprintf("%v", status.Connected) }
+				</div>
+				
+				if status.Connected {
+					<button hx-post="/disconnect" hx-target="#client-content" hx-swap={ morphSwap } class="btn-danger">
+						Disconnect
+					</button>
+					<button hx-post="/refresh" hx-target="#client-content" hx-swap={ morphSwap } class="btn-primary">
+						Refresh Names
+					</button>
+				} else {
+					<button hx-post="/connect" hx-target="#client-content" hx-swap={ morphSwap } class="btn-success">
+						Connect
+					</button>
+				}
+			</div>
+
+			<!-- Connection info -->
+			<div style="font-size: 10px; color: #666; margin-top: 10px;">
+				Last Update: { status.LastUpdate }
+			</div>
+		</div>
+
+		<!-- Names Display Panel -->
+		<div class="panel">
+			<h3>Names from Bootstrap Server ({ fmt.Sprintf("%d", len(status.Names)) } items)</h3>
+			
+			if len(status.Names) > 0 {
+				<div class="scrollable">
+					<table>
+						<thead>
+							<tr>
+								<th>#</th>
+								<th>Name</th>
+							</tr>
+						</thead>
+						<tbody>
+							for i, name := range status.Names {
+								<tr>
+									<td>{ fmt.Sprintf("%d", i+1) }</td>
+									<td>{ name }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			} else {
+				<div style="padding: 20px; text-align: center; color: #666; border: 1px solid #eee; background: #f9f9f9;">
+					if status.Connected {
+						No names received from server
+					} else {
+						Connect to server to see names
+					}
+				</div>
+			}
+		</div>
+	</div>
+
+	<!-- Full width names list as alternative view -->
+	if len(status.Names) > 10 {
+		<div class="panel">
+			<h3>All Names (List View)</h3>
+			<div class="scrollable" style="max-height: 200px;">
+				for i, name := range status.Names {
+					<div class="list-item">
+						<strong>{ fmt.Sprintf("%d.", i+1) }</strong> { name }
+					</div>
+				}
+			</div>
+		</div>
+	}
+} 

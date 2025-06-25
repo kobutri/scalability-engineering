@@ -10,3 +10,21 @@ services:
     volumes:
       - ./bootstrap:/app
       - ./data:/data
+      # Mount Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount compose file for client scaling
+      - ./docker-compose.yml:/docker-compose.yml:ro
+
+  client:
+    image: cosmtrek/air
+    working_dir: /app
+    ports:
+      - "9090:9090"
+    environment:
+      - CLIENT_NAME=demo-client
+      - BOOTSTRAP_URL=http://bootstrap:8080
+      - PORT=9090
+    volumes:
+      - ./client:/app
+    depends_on:
+      - bootstrap

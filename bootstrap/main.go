@@ -8,16 +8,18 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
 )
 
 const (
-	defaultTimeout             = 500 * time.Millisecond
-	defaultHealthCheckInterval = 1 * time.Second
+	defaultTimeout             = 5 * time.Second
+	defaultHealthCheckInterval = 100 * time.Millisecond
 	defaultCleanupInterval     = 1 * time.Second
 	defaultMaxAge              = 10 * time.Second
+	defaultMinAge              = 2 * time.Second
 	defaultSubsetSize          = 5
 )
 
@@ -27,14 +29,20 @@ type Server struct {
 	startTime     time.Time
 
 	// Configuration
-	timeout    time.Duration
-	maxAge     time.Duration
-	subsetSize int
+	timeout             time.Duration
+	maxAge              time.Duration
+	minAge              time.Duration
+	healthCheckInterval time.Duration
+	cleanupInterval     time.Duration
+	subsetSize          int
 
 	// Worker control
 	workersRunning bool
 	stopWorkers    chan struct{}
 	workersMutex   sync.RWMutex
+
+	// Client management
+	clientManager *ClientManager
 }
 
 func NewServer(dataPath string) *Server {
@@ -52,20 +60,33 @@ func NewServer(dataPath string) *Server {
 	if _, err := os.Stat(dataPath); err == nil {
 		if err := hashSet.LoadFromDisk(dataPath); err != nil {
 			log.Printf("Failed to load existing data: %v", err)
-		} else {
-			log.Printf("Loaded existing data from %s", dataPath)
 		}
 	}
 
+	// Initialize client manager
+	workingDir, _ := os.Getwd()
+	composeFile := filepath.Join(workingDir, "..", "docker-compose.yml")
+	projectName := "scalability-engineering" // This should match your project name
+
+	clientManager, err := NewClientManager(projectName, composeFile, workingDir)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize client manager: %v", err)
+		// Continue without client manager
+	}
+
 	return &Server{
-		hashSet:        hashSet,
-		priorityQueue:  NewPriorityQueue[int64, string](),
-		startTime:      time.Now(),
-		timeout:        defaultTimeout,
-		maxAge:         defaultMaxAge,
-		subsetSize:     defaultSubsetSize,
-		workersRunning: false,
-		stopWorkers:    make(chan struct{}),
+		hashSet:             hashSet,
+		priorityQueue:       NewPriorityQueue[int64, string](),
+		startTime:           time.Now(),
+		timeout:             defaultTimeout,
+		maxAge:              defaultMaxAge,
+		minAge:              defaultMinAge,
+		healthCheckInterval: defaultHealthCheckInterval,
+		cleanupInterval:     defaultCleanupInterval,
+		subsetSize:          defaultSubsetSize,
+		workersRunning:      false,
+		stopWorkers:         make(chan struct{}),
+		clientManager:       clientManager,
 	}
 }
 
@@ -74,7 +95,11 @@ func (s *Server) getCurrentTimestamp() int64 {
 }
 
 func (s *Server) healthCheckWorker() {
-	ticker := time.NewTicker(defaultHealthCheckInterval)
+	s.workersMutex.RLock()
+	interval := s.healthCheckInterval
+	s.workersMutex.RUnlock()
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -90,6 +115,34 @@ func (s *Server) healthCheckWorker() {
 
 			// Check if it's alive in a separate goroutine to avoid blocking
 			go func(name string) {
+				currentTime := s.getCurrentTimestamp()
+
+				// Check if already in priority queue
+				if s.priorityQueue.Contains(name) {
+					if priority, ok := s.priorityQueue.GetPriority(name); ok {
+						age := currentTime - priority
+
+						s.workersMutex.RLock()
+						maxAgeMicros := s.maxAge.Microseconds()
+						minAgeMicros := s.minAge.Microseconds()
+						s.workersMutex.RUnlock()
+
+						// If older than maxAge, remove it
+						if age > maxAgeMicros {
+							s.priorityQueue.Remove(name)
+							return
+						}
+
+						// If newer than minAge, skip alive check
+						if age < minAgeMicros {
+							return
+						}
+
+						// Age is between minAge and maxAge, proceed with alive check
+					}
+				}
+
+				// Proceed with alive check (either not in queue or age is between minAge and maxAge)
 				if s.isAlive(name) {
 					// Add to priority queue with current timestamp
 					timestamp := s.getCurrentTimestamp()
@@ -101,7 +154,11 @@ func (s *Server) healthCheckWorker() {
 }
 
 func (s *Server) cleanupWorker() {
-	ticker := time.NewTicker(defaultCleanupInterval)
+	s.workersMutex.RLock()
+	interval := s.cleanupInterval
+	s.workersMutex.RUnlock()
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -129,7 +186,7 @@ func (s *Server) cleanupWorker() {
 }
 
 func (s *Server) isAlive(name string) bool {
-	url := fmt.Sprintf("http://%s/alive", name)
+	url := fmt.Sprintf("http://%s:9090/alive", name)
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
@@ -300,8 +357,22 @@ func (s *Server) getStatusData() StatusData {
 	workersRunning := s.workersRunning
 	timeout := s.timeout
 	maxAge := s.maxAge
+	minAge := s.minAge
+	healthCheckInterval := s.healthCheckInterval
+	cleanupInterval := s.cleanupInterval
 	subsetSize := s.subsetSize
 	s.workersMutex.RUnlock()
+
+	// Get client containers
+	var clientContainers []ClientContainer
+	if s.clientManager != nil {
+		containers, err := s.clientManager.GetClientContainers(context.Background())
+		if err != nil {
+			log.Printf("Failed to get client containers: %v", err)
+		} else {
+			clientContainers = containers
+		}
+	}
 
 	return StatusData{
 		HashSetSize:       s.hashSet.Size(),
@@ -312,10 +383,14 @@ func (s *Server) getStatusData() StatusData {
 		Names:             names,
 		QueueItems:        queueItems,
 		WorkersRunning:    workersRunning,
+		ClientContainers:  clientContainers,
 		Config: ServerConfig{
-			Timeout:    timeout.String(),
-			MaxAge:     maxAge.String(),
-			SubsetSize: subsetSize,
+			Timeout:             timeout.String(),
+			MaxAge:              maxAge.String(),
+			MinAge:              minAge.String(),
+			HealthCheckInterval: healthCheckInterval.String(),
+			CleanupInterval:     cleanupInterval.String(),
+			SubsetSize:          subsetSize,
 		},
 	}
 }
@@ -341,6 +416,8 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	restartWorkers := false
+
 	// Update timeout
 	if timeoutStr := r.FormValue("timeout"); timeoutStr != "" {
 		if timeout, err := time.ParseDuration(timeoutStr); err == nil {
@@ -359,12 +436,53 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Update min age
+	if minAgeStr := r.FormValue("minAge"); minAgeStr != "" {
+		if minAge, err := time.ParseDuration(minAgeStr); err == nil {
+			s.workersMutex.Lock()
+			s.minAge = minAge
+			s.workersMutex.Unlock()
+		}
+	}
+
+	// Update health check interval
+	if healthCheckIntervalStr := r.FormValue("healthCheckInterval"); healthCheckIntervalStr != "" {
+		if healthCheckInterval, err := time.ParseDuration(healthCheckIntervalStr); err == nil {
+			s.workersMutex.Lock()
+			s.healthCheckInterval = healthCheckInterval
+			s.workersMutex.Unlock()
+			restartWorkers = true
+		}
+	}
+
+	// Update cleanup interval
+	if cleanupIntervalStr := r.FormValue("cleanupInterval"); cleanupIntervalStr != "" {
+		if cleanupInterval, err := time.ParseDuration(cleanupIntervalStr); err == nil {
+			s.workersMutex.Lock()
+			s.cleanupInterval = cleanupInterval
+			s.workersMutex.Unlock()
+			restartWorkers = true
+		}
+	}
+
 	// Update subset size
 	if subsetSizeStr := r.FormValue("subsetSize"); subsetSizeStr != "" {
 		if subsetSize, err := strconv.Atoi(subsetSizeStr); err == nil && subsetSize > 0 {
 			s.workersMutex.Lock()
 			s.subsetSize = subsetSize
 			s.workersMutex.Unlock()
+		}
+	}
+
+	// Restart workers if interval parameters changed
+	if restartWorkers {
+		s.workersMutex.RLock()
+		workersWereRunning := s.workersRunning
+		s.workersMutex.RUnlock()
+
+		if workersWereRunning {
+			s.stopWorkersFunc()
+			s.startWorkersFunc()
 		}
 	}
 
@@ -480,6 +598,118 @@ func (s *Server) removeFromQueueHandler(w http.ResponseWriter, r *http.Request) 
 	statusContent(data).Render(r.Context(), w)
 }
 
+// Client management handlers
+func (s *Server) addClientHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.clientManager == nil {
+		http.Error(w, "Client manager not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	clientName := r.FormValue("clientName")
+	if clientName == "" {
+		http.Error(w, "Client name is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.clientManager.CreateClient(r.Context(), clientName); err != nil {
+		log.Printf("Failed to create client %s: %v", clientName, err)
+		http.Error(w, fmt.Sprintf("Failed to create client: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := s.getStatusData()
+	statusContent(data).Render(r.Context(), w)
+}
+
+func (s *Server) removeClientHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.clientManager == nil {
+		http.Error(w, "Client manager not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var request map[string]string
+	if err := json.Unmarshal(body, &request); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	containerName, ok := request["containerName"]
+	if !ok || containerName == "" {
+		http.Error(w, "Container name is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.clientManager.RemoveClient(r.Context(), containerName); err != nil {
+		log.Printf("Failed to remove client %s: %v", containerName, err)
+		http.Error(w, fmt.Sprintf("Failed to remove client: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := s.getStatusData()
+	statusContent(data).Render(r.Context(), w)
+}
+
+func (s *Server) bulkCreateClientsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.clientManager == nil {
+		http.Error(w, "Client manager not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	countStr := r.FormValue("count")
+	count, err := strconv.Atoi(countStr)
+	if err != nil || count <= 0 {
+		http.Error(w, "Invalid count", http.StatusBadRequest)
+		return
+	}
+
+	if count > 200 {
+		http.Error(w, "Count cannot exceed 200", http.StatusBadRequest)
+		return
+	}
+
+	_, err = s.clientManager.BulkCreateClients(r.Context(), count)
+	if err != nil {
+		log.Printf("Failed to bulk create clients: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to create clients: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := s.getStatusData()
+	statusContent(data).Render(r.Context(), w)
+}
+
 func getEnvInt(key string, defaultValue int) int {
 	if str := os.Getenv(key); str != "" {
 		if val, err := strconv.Atoi(str); err == nil {
@@ -524,6 +754,9 @@ func main() {
 	// Configure from environment variables
 	server.timeout = getEnvDuration("HEALTH_TIMEOUT", defaultTimeout)
 	server.maxAge = getEnvDuration("MAX_AGE", defaultMaxAge)
+	server.minAge = getEnvDuration("MIN_AGE", defaultMinAge)
+	server.healthCheckInterval = getEnvDuration("HEALTH_CHECK_INTERVAL", defaultHealthCheckInterval)
+	server.cleanupInterval = getEnvDuration("CLEANUP_INTERVAL", defaultCleanupInterval)
 	server.subsetSize = getEnvInt("SUBSET_SIZE", defaultSubsetSize)
 
 	// Start background workers
@@ -544,11 +777,19 @@ func main() {
 	http.HandleFunc("/clear-queue", server.clearQueueHandler)
 	http.HandleFunc("/remove-from-queue", server.removeFromQueueHandler)
 
+	// Client management endpoints
+	http.HandleFunc("/add-client", server.addClientHandler)
+	http.HandleFunc("/remove-client", server.removeClientHandler)
+	http.HandleFunc("/bulk-create-clients", server.bulkCreateClientsHandler)
+
 	log.Printf("Server starting on port 8080...")
-	log.Printf("Data persistence: %s", dataPath)
-	log.Printf("Health check timeout: %v", server.timeout)
-	log.Printf("Max age: %v", server.maxAge)
-	log.Printf("Subset size: %d", server.subsetSize)
+
+	// Cleanup on exit
+	defer func() {
+		if server.clientManager != nil {
+			server.clientManager.Close()
+		}
+	}()
 
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)

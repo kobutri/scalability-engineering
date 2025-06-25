@@ -1,6 +1,11 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+const morphSwap = "morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}"
 
 type StatusData struct {
 	HashSetSize       int
@@ -12,6 +17,7 @@ type StatusData struct {
 	QueueItems        []QueueItem
 	Config            ServerConfig
 	WorkersRunning    bool
+	ClientContainers  []ClientContainer
 }
 
 type QueueItem struct {
@@ -22,9 +28,12 @@ type QueueItem struct {
 }
 
 type ServerConfig struct {
-	Timeout    string
-	MaxAge     string
-	SubsetSize int
+	Timeout             string
+	MaxAge              string
+	MinAge              string
+	HealthCheckInterval string
+	CleanupInterval     string
+	SubsetSize          int
 }
 
 templ statusPage(data StatusData) {
@@ -34,79 +43,125 @@ templ statusPage(data StatusData) {
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<title>Bootstrap Server Control Panel</title>
-			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.5/dist/htmx.min.js"></script>
-			<script src="https://unpkg.com/idiomorph@0.7.3" integrity="sha384-JcorokHTL/m+D6ZHe2+yFVQopVwZ+91GxAPDyEZ6/A/OEPGEx1+MeNSe2OGvoRS9" crossorigin="anonymous"></script>
-			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph-ext.min.js" integrity="sha384-szktAZju9fwY15dZ6D2FKFN4eZoltuXiHStNDJWK9+FARrxJtquql828JzikODob" crossorigin="anonymous"></script>
+			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.5/dist/htmx.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph-ext.js"></script>
+			<script src="https://unpkg.com/htmx-ext-json-enc@2.0.1/json-enc.js"></script>
 			<style>
+			* {
+				box-sizing: border-box;
+			}
+			html, body {
+				height: 100%;
+				margin: 0;
+				padding: 0;
+			}
 			body {
 				font-family: monospace;
-				margin: 0;
-				padding: 10px;
 				background: #f5f5f5;
 				font-size: 14px;
+				display: flex;
+				flex-direction: column;
+				padding: 8px;
+				box-sizing: border-box;
 			}
 			.container {
 				max-width: 1400px;
+				width: 100%;
+				height: 100%;
+				display: flex;
+				flex-direction: column;
 			}
 			.header {
 				background: #fff;
 				border: 1px solid #ddd;
-				padding: 10px;
-				margin-bottom: 10px;
+				padding: 8px;
+				margin-bottom: 8px;
+				flex-shrink: 0;
 			}
 			.header h1 {
 				margin: 0;
-				font-size: 20px;
+				font-size: 18px;
 			}
 			.grid {
 				display: grid;
 				grid-template-columns: 1fr 1fr;
-				gap: 10px;
-				margin-bottom: 10px;
+				max-height: 300px;
+				gap: 8px;
+				margin-bottom: 8px;
 			}
 			.grid.control-grid {
 				grid-template-columns: 1fr;
 				max-width: 400px;
 			}
+			.data-grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr 1fr;
+				gap: 8px;
+				margin-bottom: 8px;
+				flex-shrink: 0;
+				max-height: 50%;
+			}
+			.client-management {
+				display: flex;
+				flex-direction: column;
+				flex: 1;
+				min-height: 0;
+			}
+			.client-management .scrollable {
+				flex: 1;
+				min-height: 200px;
+			}
 			.panel {
+				display: flex;
+				flex-direction: column;
+				height: 100%;
+				min-height: 0;
 				background: #fff;
 				border: 1px solid #ddd;
-				padding: 10px;
+				padding: 8px;
 			}
 			.panel h3 {
-				margin: 0 0 10px 0;
-				font-size: 14px;
+				margin: 0 0 8px 0;
+				font-size: 13px;
 				border-bottom: 1px solid #eee;
-				padding-bottom: 5px;
+				padding-bottom: 4px;
+			}
+			.main-content {
+				display: flex;
+				flex-direction: column;
+				flex: 1;
+				min-height: 0;
 			}
 			.stats {
 				display: grid;
-				grid-template-columns: repeat(4, 1fr);
-				gap: 10px;
-				margin-bottom: 10px;
+				grid-template-columns: repeat(8, 1fr);
+				gap: 8px;
+				margin-bottom: 8px;
+				max-height: 120px;
+				flex-shrink: 0;
 			}
 			.stat {
 				background: #fff;
 				border: 1px solid #ddd;
-				padding: 10px;
+				padding: 8px;
 				text-align: center;
 			}
 			.stat-value {
-				font-size: 18px;
+				font-size: 16px;
 				font-weight: bold;
 			}
 			.stat-label {
-				font-size: 12px;
+				font-size: 11px;
 				color: #666;
 			}
 			.scrollable {
-				max-height: 300px;
 				overflow-y: auto;
 				border: 1px solid #ddd;
 				background: #fff;
 			}
 			.list-item {
-				padding: 5px 10px;
+				padding: 4px 8px;
 				border-bottom: 1px solid #eee;
 				display: flex;
 				justify-content: space-between;
@@ -121,10 +176,10 @@ templ statusPage(data StatusData) {
 			table {
 				width: 100%;
 				border-collapse: collapse;
-				font-size: 12px;
+				font-size: 11px;
 			}
 			th, td {
-				padding: 5px;
+				padding: 4px;
 				text-align: left;
 				border-bottom: 1px solid #eee;
 			}
@@ -133,18 +188,18 @@ templ statusPage(data StatusData) {
 				font-weight: bold;
 			}
 			.form-group {
-				margin-bottom: 10px;
+				margin-bottom: 8px;
 			}
 			.form-group label {
 				display: block;
 				margin-bottom: 2px;
-				font-size: 12px;
+				font-size: 11px;
 			}
 			input, select, button {
-				padding: 5px;
+				padding: 4px;
 				border: 1px solid #ddd;
 				font-family: monospace;
-				font-size: 12px;
+				font-size: 11px;
 			}
 			button {
 				background: #fff;
@@ -189,7 +244,7 @@ templ statusPage(data StatusData) {
 					<h1>Bootstrap Server Control Panel</h1>
 				</div>
 				<!-- Auto-updating content including header info -->
-				<div id="status-content" hx-get="/status-data" hx-trigger="every 2s" hx-swap="morph:innerHTML">
+				<div id="status-content" hx-get="/status-data" hx-trigger="every 2s" hx-swap={ morphSwap } hx-ext="morph" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
 					@statusContent(data)
 				</div>
 			</div>
@@ -209,11 +264,27 @@ templ statsSection(data StatusData) {
 		</div>
 		<div class="stat">
 			<div class="stat-value">{ data.Config.Timeout }</div>
-			<div class="stat-label">Timeout</div>
+			<div class="stat-label">Health Timeout</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ fmt.Sprintf("%d", data.Config.SubsetSize) }</div>
+			<div class="stat-label">Subset Size</div>
 		</div>
 		<div class="stat">
 			<div class="stat-value">{ data.Config.MaxAge }</div>
 			<div class="stat-label">Max Age</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ data.Config.MinAge }</div>
+			<div class="stat-label">Min Age</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ data.Config.HealthCheckInterval }</div>
+			<div class="stat-label">Check Interval</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ data.Config.CleanupInterval }</div>
+			<div class="stat-label">Cleanup Interval</div>
 		</div>
 	</div>
 }
@@ -221,136 +292,228 @@ templ statsSection(data StatusData) {
 templ controlSection(data StatusData) {
 	<div class="panel">
 		<h3>Configuration</h3>
-		<!-- Current config display -->
-		<div class="form-group">
-			<strong>Current:</strong>
-			<span style="font-family: monospace; background: #f0f0f0; padding: 2px 5px;">
-				Timeout: { data.Config.Timeout } | Max Age: { data.Config.MaxAge } | Subset: { fmt.Sprintf("%d", data.Config.SubsetSize) }
-			</span>
-		</div>
 		<!-- Smart updating form -->
-		<form id="config-form" hx-post="/update-config" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:innerHTML">
-			<div class="form-group">
-				<label>Health Check Timeout:</label>
-				<input
-					hx-preserve
-					type="text"
-					name="timeout"
-					id="timeout-input"
-					value={ data.Config.Timeout }
-					placeholder="e.g. 500ms"
-				/>
-			</div>
-			<div class="form-group">
-				<label>Max Age:</label>
-				<input
-					hx-preserve
-					type="text"
-					name="maxAge"
-					id="maxage-input"
-					value={ data.Config.MaxAge }
-					placeholder="e.g. 10s"
-				/>
-			</div>
-			<div class="form-group">
-				<label>Subset Size:</label>
-				<input
-					hx-preserve
-					type="number"
-					name="subsetSize"
-					id="subset-input"
-					value={ fmt.Sprintf("%d", data.Config.SubsetSize) }
-					min="1"
-				/>
-			</div>
-			<button type="submit">Update Config</button>
-		</form>
+		<div class="scrollable">
+			<form id="config-form" hx-post="/update-config" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap }>
+				<div class="form-group">
+					<label>Health Check Timeout:</label>
+					<input
+						type="text"
+						name="timeout"
+						id="timeout-input"
+						value={ data.Config.Timeout }
+						placeholder="e.g. 500ms"
+					/>
+				</div>
+				<div class="form-group">
+					<label>Max Age:</label>
+					<input
+						type="text"
+						name="maxAge"
+						id="maxage-input"
+						value={ data.Config.MaxAge }
+						placeholder="e.g. 10s"
+					/>
+				</div>
+				<div class="form-group">
+					<label>Min Age:</label>
+					<input
+						type="text"
+						name="minAge"
+						id="minage-input"
+						value={ data.Config.MinAge }
+						placeholder="e.g. 2s"
+					/>
+				</div>
+				<div class="form-group">
+					<label>Health Check Interval:</label>
+					<input
+						type="text"
+						name="healthCheckInterval"
+						id="interval-input"
+						value={ data.Config.HealthCheckInterval }
+						placeholder="e.g. 100ms"
+					/>
+				</div>
+				<div class="form-group">
+					<label>Cleanup Interval:</label>
+					<input
+						type="text"
+						name="cleanupInterval"
+						id="cleanup-input"
+						value={ data.Config.CleanupInterval }
+						placeholder="e.g. 1s"
+					/>
+				</div>
+				<div class="form-group">
+					<label>Subset Size:</label>
+					<input
+						type="number"
+						name="subsetSize"
+						id="subset-input"
+						value={ fmt.Sprintf("%d", data.Config.SubsetSize) }
+						min="1"
+					/>
+				</div>
+				<button type="submit">Update Config</button>
+			</form>
+		</div>
 		<hr/>
 		<div class="form-group">
 			<label>Background Workers:</label>
 			if data.WorkersRunning {
-				<button hx-post="/stop-workers" hx-target="#status-content" hx-swap="morph:innerHTML" class="btn-danger">Stop Workers</button>
+				<button hx-post="/stop-workers" hx-target="#status-content" hx-swap={ morphSwap } class="btn-danger">Stop Workers</button>
 			} else {
-				<button hx-post="/start-workers" hx-target="#status-content" hx-swap="morph:innerHTML" class="btn-success">Start Workers</button>
+				<button hx-post="/start-workers" hx-target="#status-content" hx-swap={ morphSwap } class="btn-success">Start Workers</button>
 			}
 		</div>
 	</div>
 }
 
 templ dataSection(data StatusData) {
-	<div class="grid">
-		<div class="panel">
-			<h3>HashSet Management ({ fmt.Sprintf("%d", len(data.Names)) } items)</h3>
-			<form hx-post="/add-name" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:innerHTML" class="inline-form">
-				<input type="text" name="name" placeholder="Add name..." required/>
-				<button type="submit">Add</button>
-			</form>
-			<div class="scrollable">
-				if len(data.Names) > 0 {
-					for _, name := range data.Names {
-						<div class="list-item">
-							<span>{ name }</span>
-							<button hx-post="/remove-name" hx-vals={ fmt.Sprintf("{\"name\":\"%s\"}", name) } hx-target="#status-content" hx-swap="morph:innerHTML" class="btn-danger">Remove</button>
-						</div>
-					}
-				} else {
-					<div class="list-item">No names registered</div>
+	<div class="panel">
+		<h3>HashSet Management ({ fmt.Sprintf("%d", len(data.Names)) } items)</h3>
+		<form hx-post="/add-name" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap } class="inline-form">
+			<input type="text" name="name" placeholder="Add name..." required/>
+			<button type="submit">Add</button>
+		</form>
+		<div class="scrollable">
+			if len(data.Names) > 0 {
+				for _, name := range data.Names {
+					<div class="list-item">
+						<span>{ name }</span>
+						<button hx-post="/remove-name" hx-vals={ fmt.Sprintf("{\"name\":\"%s\"}", name) } hx-target="#status-content" hx-swap={ morphSwap } hx-ext="json-enc" class="btn-danger">Remove</button>
+					</div>
 				}
-			</div>
+			} else {
+				<div class="list-item">No names registered</div>
+			}
 		</div>
-		<div class="panel">
-			<h3>Priority Queue ({ fmt.Sprintf("%d", len(data.QueueItems)) } items)</h3>
-			<form hx-post="/clear-queue" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:innerHTML">
-				<button type="submit" class="btn-danger">Clear Queue</button>
-			</form>
-			<div class="scrollable">
-				if len(data.QueueItems) > 0 {
-					<table>
-						<thead>
+	</div>
+	<div class="panel">
+		<h3>Priority Queue ({ fmt.Sprintf("%d", len(data.QueueItems)) } items)</h3>
+		<form hx-post="/clear-queue" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap }>
+			<button type="submit" class="btn-danger">Clear Queue</button>
+		</form>
+		<div class="scrollable">
+			if len(data.QueueItems) > 0 {
+				<table>
+					<thead>
+						<tr>
+							<th>Name</th>
+							<th>Age</th>
+							<th>Timestamp</th>
+							<th>Action</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, item := range data.QueueItems {
 							<tr>
-								<th>Name</th>
-								<th>Age</th>
-								<th>Timestamp</th>
-								<th>Action</th>
+								<td>{ item.Name }</td>
+								<td>{ item.Age }</td>
+								<td>{ item.Timestamp }</td>
+								<td>
+									<button hx-post="/remove-from-queue" hx-vals={ fmt.Sprintf("{\"name\":\"%s\"}", item.Name) } hx-target="#status-content" hx-swap={ morphSwap } hx-ext="json-enc" class="btn-danger">Remove</button>
+								</td>
 							</tr>
-						</thead>
-						<tbody>
-							for _, item := range data.QueueItems {
-								<tr>
-									<td>{ item.Name }</td>
-									<td>{ item.Age }</td>
-									<td>{ item.Timestamp }</td>
-									<td>
-										<button hx-post="/remove-from-queue" hx-vals={ fmt.Sprintf("{\"name\":\"%s\"}", item.Name) } hx-target="#status-content" hx-swap="morph:innerHTML" class="btn-danger">Remove</button>
-									</td>
-								</tr>
-							}
-						</tbody>
-					</table>
-				} else {
-					<div class="list-item">Queue is empty</div>
-				}
-			</div>
+						}
+					</tbody>
+				</table>
+			} else {
+				<div class="list-item">Queue is empty</div>
+			}
 		</div>
 	</div>
 }
 
 templ statusContent(data StatusData) {
 	<!-- Dynamic header info -->
-	<div style="background: #fff; border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+	<div style="background: #fff; border: 1px solid #ddd; padding: 6px 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; flex-shrink: 0;">
 		<span>Uptime: { data.UptimeFormatted } | Last Update: { data.CurrentTime }</span>
-		<span style="font-size: 12px;">
+		<span style="font-size: 11px;">
 			Workers: 
 			if data.WorkersRunning {
-				<span style="color: green;">● RUNNING</span>
+				<span style="color: green;">● ON</span>
 			} else {
-				<span style="color: red;">● STOPPED</span>
+				<span style="color: red;">● OFF</span>
 			}
 		</span>
 	</div>
-	@statsSection(data)
-	<div class="grid">
-		@controlSection(data)
-		@dataSection(data)
+	<div class="main-content">
+		@statsSection(data)
+		<div class="data-grid">
+			@controlSection(data)
+			@dataSection(data)
+		</div>
+		@clientManagementSection(data)
+	</div>
+}
+
+templ clientManagementSection(data StatusData) {
+	<div class="panel client-management" style="margin-top: 8px;">
+		<h3>Client Container Management ({ fmt.Sprintf("%d", len(data.ClientContainers)) } containers)</h3>
+		<!-- Control buttons -->
+		<div style="margin-bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+			<form hx-post="/add-client" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap } class="inline-form">
+				<input type="text" name="clientName" placeholder="Client name..." required style="width: 150px;"/>
+				<button type="submit" class="btn-success">Add Client</button>
+			</form>
+			<form hx-post="/bulk-create-clients" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap } class="inline-form">
+				<input type="number" name="count" min="1" max="200" value="20" required style="width: 80px;"/>
+				<button type="submit" class="btn-success">Bulk Create</button>
+			</form>
+		</div>
+		<!-- Client containers table -->
+		<div class="scrollable">
+			if len(data.ClientContainers) > 0 {
+				<table>
+					<thead>
+						<tr>
+							<th>Container Name</th>
+							<th>Status</th>
+							<th>Web Access</th>
+							<th>Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, container := range data.ClientContainers {
+							<tr>
+								<td>{ container.Name }</td>
+								<td>
+									if strings.Contains(container.Status, "Up") {
+										<span style="color: green;">{ container.Status }</span>
+									} else {
+										<span style="color: red;">{ container.Status }</span>
+									}
+								</td>
+								<td>
+									if container.HostPort != "" && strings.Contains(container.Status, "Up") {
+										<a href={ templ.URL(container.WebURL) } target="_blank" class="btn-primary" style="font-size: 12px; padding: 4px 8px;">
+											Open UI :{ container.HostPort }
+										</a>
+									} else if container.HostPort != "" {
+										<span style="color: #666; font-size: 12px;">Port { container.HostPort } (stopped)</span>
+									} else {
+										<span style="color: #666; font-size: 12px;">No port mapping</span>
+									}
+								</td>
+								<td>
+									<button
+										hx-post="/remove-client"
+										hx-vals={ fmt.Sprintf("{\"containerName\":\"%s\"}", container.Name) }
+										hx-target="#status-content"
+										hx-swap={ morphSwap }
+										hx-ext="json-enc"
+										class="btn-danger"
+									>Remove</button>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			} else {
+				<div class="list-item">No client containers running</div>
+			}
+		</div>
 	</div>
 }

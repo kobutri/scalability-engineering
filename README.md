@@ -398,6 +398,144 @@ Contributions are welcome! Please ensure:
 4. Generic type constraints are respected
 5. Documentation is updated
 
+## Bootstrap Client Application
+
+In addition to the bootstrap server, this project includes a client application that demonstrates how to connect to and interact with the bootstrap server. The client provides a web UI similar to the bootstrap status page.
+
+### Features
+
+- **Connection Management**: Connect/disconnect to bootstrap server
+- **Names Display**: View names received from the server in a table format
+- **Real-time Updates**: Auto-refreshing UI with HTMX
+- **Similar Styling**: UI styled consistently with the bootstrap status page
+- **Environment Configuration**: Configurable client name and server URL
+
+### Building Docker Images
+
+Before running the application, you need to build the Docker images. This is automated for you:
+
+```bash
+# Build all Docker images (bootstrap + client)
+./build.sh
+```
+
+This script will:
+- Build both bootstrap and client Docker images
+- Tag images with proper naming conventions for compatibility  
+- Display all available images when done
+
+### Running the Client
+
+#### Development Mode
+
+```bash
+# Automatically builds images if needed, then starts with hot reloading
+./dev.sh
+```
+
+Or manually:
+
+```bash
+cd client
+./dev.sh
+```
+
+This starts the client in development mode with hot reloading:
+- Client Name: `dev-client`
+- Bootstrap URL: `http://localhost:8080`
+- Port: `9090`
+
+Access the client UI at: `http://localhost:9090`
+
+#### Using Docker
+
+```bash
+# Start both bootstrap server and client
+docker-compose up
+
+# Development mode with hot reloading
+docker-compose -f docker-compose.dev.yml up
+```
+
+#### Manual Configuration
+
+```bash
+cd client
+export CLIENT_NAME="my-client"
+export BOOTSTRAP_URL="http://localhost:8080"
+export PORT="9090"
+go run .
+```
+
+### Client UI
+
+The client provides a web interface with:
+
+1. **Connection Status**: Shows current connection state to bootstrap server
+2. **Control Panel**: Connect/disconnect buttons and configuration display
+3. **Names Table**: Displays names received from the bootstrap server
+4. **Auto-refresh**: Updates every 3 seconds automatically
+5. **Error Handling**: Shows connection errors and status messages
+
+### API Endpoints
+
+- `GET /` - Main client status page
+- `GET /status-data` - Get current client status (HTMX endpoint)
+- `POST /connect` - Connect to bootstrap server
+- `POST /disconnect` - Disconnect from bootstrap server  
+- `POST /refresh` - Refresh names from server
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLIENT_NAME` | `default-client` | Name used to identify this client |
+| `BOOTSTRAP_URL` | `http://localhost:8080` | URL of the bootstrap server |
+| `PORT` | `9090` | Port for the client web server |
+
+### Docker Compose Configuration
+
+The client is configured in both `docker-compose.yml` and `docker-compose.dev.yml`:
+
+```yaml
+client:
+  build:
+    context: ./client
+    dockerfile: Dockerfile
+  ports:
+    - "9090:9090"
+  environment:
+    - CLIENT_NAME=demo-client
+    - BOOTSTRAP_URL=http://bootstrap:8080
+    - PORT=9090
+  depends_on:
+    - bootstrap
+```
+
+### Client Architecture
+
+The client is built using:
+- **Go HTTP Server**: Serves the web UI and handles API requests
+- **Templ**: Template engine for server-side rendering
+- **HTMX**: For dynamic UI updates without JavaScript
+- **Concurrent-Safe Design**: Thread-safe operations with mutex protection
+
+### Troubleshooting
+
+#### "Failed to create client: image not found" Error
+
+If you encounter an error like:
+```
+Failed to create client: failed to ensure image exists: image scalability-engineering_client not found
+```
+
+This happens when the Docker images haven't been built yet. The solution is automatic:
+
+1. **Run the build script**: `./build.sh` - This builds and properly tags all images
+2. **Or use dev.sh**: `./dev.sh` - This automatically checks and builds images if needed
+
+**Technical Details**: Docker Compose uses hyphens in image names (`scalability-engineering-client`) but the code expects underscores (`scalability-engineering_client`). The build script automatically creates both naming conventions for compatibility.
+
 ---
 
 **Note**: This generic HashSet provides significant advantages over interface{}-based implementations through type safety and performance improvements. It's optimized for scenarios where random element access is required with the added benefits of compile-time type checking and zero boxing overhead. 
