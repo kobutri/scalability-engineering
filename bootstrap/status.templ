@@ -8,12 +8,12 @@ import (
 const morphSwap = "morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}"
 
 type StatusData struct {
-	HashSetSize       int
+	HashSetSize       int    // Keep for backwards compatibility, represents client count
 	PriorityQueueSize int
 	UptimeSeconds     float64
 	UptimeFormatted   string
 	CurrentTime       string
-	Names             []string
+	ClientEntries     []Entry[string, string] // Contains ID-Name pairs
 	QueueItems        []QueueItem
 	Config            ServerConfig
 	WorkersRunning    bool
@@ -21,6 +21,7 @@ type StatusData struct {
 }
 
 type QueueItem struct {
+	ID        string
 	Name      string
 	Priority  int64
 	Timestamp string
@@ -256,7 +257,7 @@ templ statsSection(data StatusData) {
 	<div class="stats">
 		<div class="stat">
 			<div class="stat-value">{ fmt.Sprintf("%d", data.HashSetSize) }</div>
-			<div class="stat-label">HashSet Size</div>
+			<div class="stat-label">Client Count</div>
 		</div>
 		<div class="stat">
 			<div class="stat-value">{ fmt.Sprintf("%d", data.PriorityQueueSize) }</div>
@@ -372,21 +373,36 @@ templ controlSection(data StatusData) {
 
 templ dataSection(data StatusData) {
 	<div class="panel">
-		<h3>HashSet Management ({ fmt.Sprintf("%d", len(data.Names)) } items)</h3>
+		<h3>Connected Clients ({ fmt.Sprintf("%d", len(data.ClientEntries)) } clients)</h3>
 		<form hx-post="/add-name" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap } class="inline-form">
-			<input type="text" name="name" placeholder="Add name..." required/>
-			<button type="submit">Add</button>
+			<input type="text" name="id" placeholder="Client ID..." required style="width: 120px;"/>
+			<input type="text" name="name" placeholder="Client name..." required style="width: 120px;"/>
+			<button type="submit">Add Client</button>
 		</form>
 		<div class="scrollable">
-			if len(data.Names) > 0 {
-				for _, name := range data.Names {
-					<div class="list-item">
-						<span>{ name }</span>
-						<button hx-post="/remove-name" hx-vals={ fmt.Sprintf("{\"name\":\"%s\"}", name) } hx-target="#status-content" hx-swap={ morphSwap } hx-ext="json-enc" class="btn-danger">Remove</button>
-					</div>
-				}
+			if len(data.ClientEntries) > 0 {
+				<table>
+					<thead>
+						<tr>
+							<th>Container ID</th>
+							<th>Client Name</th>
+							<th>Action</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, entry := range data.ClientEntries {
+							<tr>
+								<td>{ entry.Key }</td>
+								<td>{ entry.Value }</td>
+								<td>
+									<button hx-post="/remove-name" hx-vals={ fmt.Sprintf("{\"id\":\"%s\"}", entry.Key) } hx-target="#status-content" hx-swap={ morphSwap } hx-ext="json-enc" class="btn-danger">Remove</button>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
 			} else {
-				<div class="list-item">No names registered</div>
+				<div class="list-item">No clients connected</div>
 			}
 		</div>
 	</div>
@@ -400,7 +416,8 @@ templ dataSection(data StatusData) {
 				<table>
 					<thead>
 						<tr>
-							<th>Name</th>
+							<th>Container ID</th>
+							<th>Client Name</th>
 							<th>Age</th>
 							<th>Timestamp</th>
 							<th>Action</th>
@@ -409,11 +426,12 @@ templ dataSection(data StatusData) {
 					<tbody>
 						for _, item := range data.QueueItems {
 							<tr>
+								<td>{ item.ID }</td>
 								<td>{ item.Name }</td>
 								<td>{ item.Age }</td>
 								<td>{ item.Timestamp }</td>
 								<td>
-									<button hx-post="/remove-from-queue" hx-vals={ fmt.Sprintf("{\"name\":\"%s\"}", item.Name) } hx-target="#status-content" hx-swap={ morphSwap } hx-ext="json-enc" class="btn-danger">Remove</button>
+									<button hx-post="/remove-from-queue" hx-vals={ fmt.Sprintf("{\"id\":\"%s\"}", item.ID) } hx-target="#status-content" hx-swap={ morphSwap } hx-ext="json-enc" class="btn-danger">Remove</button>
 								</td>
 							</tr>
 						}
@@ -461,6 +479,9 @@ templ clientManagementSection(data StatusData) {
 			<form hx-post="/bulk-create-clients" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap } class="inline-form">
 				<input type="number" name="count" min="1" max="200" value="20" required style="width: 80px;"/>
 				<button type="submit" class="btn-success">Bulk Create</button>
+			</form>
+			<form hx-post="/remove-all-clients" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap } class="inline-form">
+				<button type="submit" class="btn-danger" onclick="return confirm('Are you sure you want to remove all client containers? This action cannot be undone.')">Remove All</button>
 			</form>
 		</div>
 		<!-- Client containers table -->

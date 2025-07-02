@@ -381,3 +381,69 @@ func (cm *ClientManager) BulkCreateClients(ctx context.Context, count int) ([]st
 
 	return createdNames, nil
 }
+
+// BulkRemoveClients removes multiple client containers concurrently for improved performance
+func (cm *ClientManager) BulkRemoveClients(ctx context.Context, containerNames []string) error {
+	if len(containerNames) == 0 {
+		return nil
+	}
+
+	// Use a buffered channel to collect errors
+	errChan := make(chan error, len(containerNames))
+
+	// Remove containers concurrently using goroutines
+	for _, containerName := range containerNames {
+		go func(name string) {
+			// Force remove without stopping first - this is faster
+			err := cm.dockerClient.ContainerRemove(ctx, name, container.RemoveOptions{
+				Force: true, // Force removal handles running containers
+			})
+			if err != nil && !client.IsErrNotFound(err) {
+				errChan <- fmt.Errorf("failed to remove container %s: %w", name, err)
+			} else {
+				errChan <- nil
+			}
+		}(containerName)
+	}
+
+	// Collect results
+	var errors []error
+	for i := 0; i < len(containerNames); i++ {
+		if err := <-errChan; err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	// Return combined error if any failures occurred
+	if len(errors) > 0 {
+		var errorMessages []string
+		for _, err := range errors {
+			errorMessages = append(errorMessages, err.Error())
+		}
+		return fmt.Errorf("bulk removal failed with %d errors: %s", len(errors), strings.Join(errorMessages, "; "))
+	}
+
+	return nil
+}
+
+// RemoveAllClients removes all client containers for this project concurrently
+func (cm *ClientManager) RemoveAllClients(ctx context.Context) error {
+	// Get all client containers
+	containers, err := cm.GetClientContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get client containers: %w", err)
+	}
+
+	if len(containers) == 0 {
+		return nil // Nothing to remove
+	}
+
+	// Extract container names
+	containerNames := make([]string, len(containers))
+	for i, container := range containers {
+		containerNames[i] = container.Name
+	}
+
+	// Use bulk removal for better performance
+	return cm.BulkRemoveClients(ctx, containerNames)
+}

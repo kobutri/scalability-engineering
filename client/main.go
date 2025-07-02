@@ -16,21 +16,20 @@ import (
 type ClientIdentity struct {
 	Name        string `json:"name"`
 	ContainerID string `json:"container_id"`
-	Source      string `json:"source"`
 }
 
 type Client struct {
-	identity        ClientIdentity
-	bootstrapURL    string
-	connected       bool
-	names           []string
-	lastUpdate      time.Time
-	connectionError string
-	mutex           sync.RWMutex
-	autoConnect     bool
-	retryInterval   time.Duration
-	maxRetries      int
-	shutdownChan    chan bool
+	identity         ClientIdentity
+	bootstrapURL     string
+	connected        bool
+	clientIdentities []ClientIdentity
+	lastUpdate       time.Time
+	connectionError  string
+	mutex            sync.RWMutex
+	autoConnect      bool
+	retryInterval    time.Duration
+	maxRetries       int
+	shutdownChan     chan bool
 }
 
 // DiscoverClientIdentity discovers the client's identity from environment and system
@@ -40,16 +39,13 @@ func DiscoverClientIdentity() ClientIdentity {
 	// Try CLIENT_NAME environment variable first (set by bootstrap)
 	if name := os.Getenv("CLIENT_NAME"); name != "" {
 		identity.Name = name
-		identity.Source = "CLIENT_NAME environment variable"
 	} else {
 		// Fallback to hostname-based name
 		if hostname, err := os.Hostname(); err == nil {
 			identity.Name = fmt.Sprintf("client-%s", hostname[:8]) // Use first 8 chars of container ID
-			identity.Source = "hostname fallback"
 		} else {
 			// Last resort default
 			identity.Name = "default-client"
-			identity.Source = "default fallback"
 		}
 	}
 
@@ -66,19 +62,19 @@ func DiscoverClientIdentity() ClientIdentity {
 func NewClient(bootstrapURL string, autoConnect bool, retryInterval time.Duration, maxRetries int) *Client {
 	identity := DiscoverClientIdentity()
 
-	log.Printf("Discovered client identity: Name='%s', ContainerID='%s', Source='%s'",
-		identity.Name, identity.ContainerID, identity.Source)
+	log.Printf("Discovered client identity: Name='%s', ContainerID='%s'",
+		identity.Name, identity.ContainerID)
 
 	return &Client{
-		identity:      identity,
-		bootstrapURL:  bootstrapURL,
-		connected:     false,
-		names:         []string{},
-		lastUpdate:    time.Now(),
-		autoConnect:   autoConnect,
-		retryInterval: retryInterval,
-		maxRetries:    maxRetries,
-		shutdownChan:  make(chan bool, 1),
+		identity:         identity,
+		bootstrapURL:     bootstrapURL,
+		connected:        false,
+		clientIdentities: []ClientIdentity{},
+		lastUpdate:       time.Now(),
+		autoConnect:      autoConnect,
+		retryInterval:    retryInterval,
+		maxRetries:       maxRetries,
+		shutdownChan:     make(chan bool, 1),
 	}
 }
 
@@ -94,8 +90,15 @@ func (c *Client) connect() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
+	identityJSON, err := json.Marshal(c.identity)
+	if err != nil {
+		c.connectionError = fmt.Sprintf("Failed to encode identity: %v", err)
+		c.connected = false
+		return err
+	}
+
 	url := fmt.Sprintf("%s/connect", c.bootstrapURL)
-	resp, err := http.Post(url, "text/plain", bytes.NewBufferString(c.identity.ContainerID))
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(identityJSON))
 	if err != nil {
 		c.connectionError = fmt.Sprintf("Failed to connect: %v", err)
 		c.connected = false
@@ -110,18 +113,18 @@ func (c *Client) connect() error {
 		return fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 
-	var names []string
-	if err := json.NewDecoder(resp.Body).Decode(&names); err != nil {
+	var clientIdentities []ClientIdentity
+	if err := json.NewDecoder(resp.Body).Decode(&clientIdentities); err != nil {
 		c.connectionError = fmt.Sprintf("Failed to decode response: %v", err)
 		c.connected = false
 		return err
 	}
 
-	c.names = names
+	c.clientIdentities = clientIdentities
 	c.connected = true
 	c.connectionError = ""
 	c.lastUpdate = time.Now()
-	log.Printf("Connected to bootstrap server. Received %d names", len(names))
+	log.Printf("Connected to bootstrap server. Received %d client identities", len(clientIdentities))
 	return nil
 }
 
@@ -142,11 +145,44 @@ func (c *Client) disconnect() error {
 	defer resp.Body.Close()
 
 	c.connected = false
-	c.names = []string{}
+	c.clientIdentities = []ClientIdentity{}
 	c.connectionError = ""
 	c.lastUpdate = time.Now()
 	log.Printf("Disconnected from bootstrap server")
 	return nil
+}
+
+// tryAutoConnect attempts a connection and manages retry counting
+func (c *Client) tryAutoConnect(retryCount *int, isInitial bool) bool {
+	c.mutex.RLock()
+	isConnected := c.connected
+	c.mutex.RUnlock()
+
+	if isConnected {
+		*retryCount = 0 // Reset retry count if already connected
+		return true
+	}
+
+	if c.maxRetries > 0 && *retryCount >= c.maxRetries {
+		log.Printf("Max retries (%d) reached, stopping auto-connect attempts", c.maxRetries)
+		return false // Signal to stop trying
+	}
+
+	attemptMsg := "auto-connect"
+	if isInitial {
+		attemptMsg = "initial auto-connect"
+	}
+
+	log.Printf("Attempting %s (attempt %d)...", attemptMsg, *retryCount+1)
+	if err := c.connect(); err != nil {
+		(*retryCount)++
+		log.Printf("Auto-connect failed: %v (retry %d)", err, *retryCount)
+		return true // Continue trying
+	} else {
+		*retryCount = 0 // Reset retry count on successful connection
+		log.Printf("Auto-connect successful!")
+		return true
+	}
 }
 
 // autoConnectWorker handles automatic connection with retry logic
@@ -157,10 +193,13 @@ func (c *Client) autoConnectWorker() {
 
 	log.Printf("Starting auto-connect worker (retry interval: %v, max retries: %d)", c.retryInterval, c.maxRetries)
 
-	// Initial connection attempt with delay to let server start
-	time.Sleep(2 * time.Second)
-
 	retryCount := 0
+
+	// Try to connect immediately on startup
+	if !c.tryAutoConnect(&retryCount, true) {
+		return // Max retries reached
+	}
+
 	ticker := time.NewTicker(c.retryInterval)
 	defer ticker.Stop()
 
@@ -170,26 +209,8 @@ func (c *Client) autoConnectWorker() {
 			log.Printf("Auto-connect worker shutting down")
 			return
 		case <-ticker.C:
-			c.mutex.RLock()
-			isConnected := c.connected
-			c.mutex.RUnlock()
-
-			if !isConnected {
-				if c.maxRetries > 0 && retryCount >= c.maxRetries {
-					log.Printf("Max retries (%d) reached, stopping auto-connect attempts", c.maxRetries)
-					return
-				}
-
-				log.Printf("Attempting auto-connect (attempt %d)...", retryCount+1)
-				if err := c.connect(); err != nil {
-					retryCount++
-					log.Printf("Auto-connect failed: %v (retry %d)", err, retryCount)
-				} else {
-					retryCount = 0 // Reset retry count on successful connection
-					log.Printf("Auto-connect successful!")
-				}
-			} else {
-				retryCount = 0 // Reset retry count if already connected
+			if !c.tryAutoConnect(&retryCount, false) {
+				return // Max retries reached
 			}
 		}
 	}
@@ -207,16 +228,15 @@ func (c *Client) getStatus() ClientStatus {
 	defer c.mutex.RUnlock()
 
 	status := ClientStatus{
-		ClientName:      c.identity.Name,
-		ContainerID:     c.identity.ContainerID,
-		IdentitySource:  c.identity.Source,
-		BootstrapURL:    c.bootstrapURL,
-		Connected:       c.connected,
-		Names:           append([]string{}, c.names...), // Copy slice
-		NamesCount:      len(c.names),
-		LastUpdate:      c.lastUpdate.Format("15:04:05"),
-		ConnectionError: c.connectionError,
-		CurrentTime:     time.Now().Format("15:04:05"),
+		ClientName:       c.identity.Name,
+		ContainerID:      c.identity.ContainerID,
+		BootstrapURL:     c.bootstrapURL,
+		Connected:        c.connected,
+		ClientIdentities: append([]ClientIdentity{}, c.clientIdentities...), // Copy slice
+		NamesCount:       len(c.clientIdentities),
+		LastUpdate:       c.lastUpdate.Format("15:04:05"),
+		ConnectionError:  c.connectionError,
+		CurrentTime:      time.Now().Format("15:04:05"),
 	}
 
 	return status

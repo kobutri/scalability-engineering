@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+type ClientIdentity struct {
+	Name        string `json:"name"`
+	ContainerID string `json:"container_id"`
+}
+
 const (
 	defaultTimeout             = 5 * time.Second
 	defaultHealthCheckInterval = 100 * time.Millisecond
@@ -24,7 +29,7 @@ const (
 )
 
 type Server struct {
-	hashSet       *HashSet[string]
+	hashMap       *HashMap[string, string] // id -> client name
 	priorityQueue *PriorityQueue[int64, string]
 	startTime     time.Time
 
@@ -46,7 +51,7 @@ type Server struct {
 }
 
 func NewServer(dataPath string) *Server {
-	// Create HashSet with persistence
+	// Create HashMap with persistence
 	persistConfig := PersistenceConfig{
 		Enabled:          true,
 		FilePath:         dataPath,
@@ -54,11 +59,11 @@ func NewServer(dataPath string) *Server {
 		MaxRetries:       3,
 	}
 
-	hashSet := NewHashSetWithPersistence[string](persistConfig)
+	hashMap := NewHashMapWithPersistence[string, string](persistConfig)
 
 	// Try to load existing data
 	if _, err := os.Stat(dataPath); err == nil {
-		if err := hashSet.LoadFromDisk(dataPath); err != nil {
+		if err := hashMap.LoadFromDisk(dataPath); err != nil {
 			log.Printf("Failed to load existing data: %v", err)
 		}
 	}
@@ -75,7 +80,7 @@ func NewServer(dataPath string) *Server {
 	}
 
 	return &Server{
-		hashSet:             hashSet,
+		hashMap:             hashMap,
 		priorityQueue:       NewPriorityQueue[int64, string](),
 		startTime:           time.Now(),
 		timeout:             defaultTimeout,
@@ -107,19 +112,19 @@ func (s *Server) healthCheckWorker() {
 		case <-s.stopWorkers:
 			return
 		case <-ticker.C:
-			// Get a random element from the hashset
-			name, ok := s.hashSet.RandomElement()
+			// Get a random container ID from the hashmap
+			containerID, _, ok := s.hashMap.RandomEntry()
 			if !ok {
 				continue
 			}
 
 			// Check if it's alive in a separate goroutine to avoid blocking
-			go func(name string) {
+			go func(containerID string) {
 				currentTime := s.getCurrentTimestamp()
 
-				// Check if already in priority queue
-				if s.priorityQueue.Contains(name) {
-					if priority, ok := s.priorityQueue.GetPriority(name); ok {
+				// Check if already in priority queue (using container ID)
+				if s.priorityQueue.Contains(containerID) {
+					if priority, ok := s.priorityQueue.GetPriority(containerID); ok {
 						age := currentTime - priority
 
 						s.workersMutex.RLock()
@@ -129,7 +134,7 @@ func (s *Server) healthCheckWorker() {
 
 						// If older than maxAge, remove it
 						if age > maxAgeMicros {
-							s.priorityQueue.Remove(name)
+							s.priorityQueue.Remove(containerID)
 							return
 						}
 
@@ -142,13 +147,16 @@ func (s *Server) healthCheckWorker() {
 					}
 				}
 
-				// Proceed with alive check (either not in queue or age is between minAge and maxAge)
-				if s.isAlive(name) {
-					// Add to priority queue with current timestamp
+				// Proceed with alive check (using container ID for URL)
+				if s.isAlive(containerID) {
+					// Add to priority queue with current timestamp (using container ID)
 					timestamp := s.getCurrentTimestamp()
-					s.priorityQueue.Insert(timestamp, name)
+					s.priorityQueue.Insert(timestamp, containerID)
+				} else {
+					s.priorityQueue.Remove(containerID)
+					s.hashMap.Remove(containerID)
 				}
-			}(name)
+			}(containerID)
 		}
 	}
 }
@@ -185,8 +193,8 @@ func (s *Server) cleanupWorker() {
 	}
 }
 
-func (s *Server) isAlive(name string) bool {
-	url := fmt.Sprintf("http://%s:9090/alive", name)
+func (s *Server) isAlive(id string) bool {
+	url := fmt.Sprintf("http://%s:9090/alive", id)
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
@@ -206,8 +214,20 @@ func (s *Server) isAlive(name string) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-func (s *Server) getRandomSubset() []string {
-	return s.priorityQueue.GetRandomSubset(s.subsetSize)
+func (s *Server) getRandomSubset() []ClientIdentity {
+	containerIDs := s.priorityQueue.GetRandomSubset(s.subsetSize)
+	identities := make([]ClientIdentity, 0, len(containerIDs))
+
+	for _, containerID := range containerIDs {
+		if name, exists := s.hashMap.Get(containerID); exists {
+			identities = append(identities, ClientIdentity{
+				Name:        name,
+				ContainerID: containerID,
+			})
+		}
+	}
+
+	return identities
 }
 
 func (s *Server) connectHandler(w http.ResponseWriter, r *http.Request) {
@@ -223,18 +243,23 @@ func (s *Server) connectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	name := string(body)
-	if name == "" {
-		http.Error(w, "Name cannot be empty", http.StatusBadRequest)
+	var identity ClientIdentity
+	if err := json.Unmarshal(body, &identity); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	// Insert into hashset
-	s.hashSet.Insert(name)
+	if identity.ContainerID == "" || identity.Name == "" {
+		http.Error(w, "ContainerID and Name cannot be empty", http.StatusBadRequest)
+		return
+	}
 
-	// Add to priority queue with current timestamp
+	// Insert into hashmap (id -> client name)
+	s.hashMap.Put(identity.ContainerID, identity.Name)
+
+	// Add to priority queue with current timestamp (using container ID as the unique identifier)
 	timestamp := s.getCurrentTimestamp()
-	s.priorityQueue.Insert(timestamp, name)
+	s.priorityQueue.Insert(timestamp, identity.ContainerID)
 
 	// Get random subset to return
 	subset := s.getRandomSubset()
@@ -257,17 +282,14 @@ func (s *Server) deleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	name := string(body)
-	if name == "" {
-		http.Error(w, "Name cannot be empty", http.StatusBadRequest)
+	identifier := string(body)
+	if identifier == "" {
+		http.Error(w, "Identifier cannot be empty", http.StatusBadRequest)
 		return
 	}
 
-	// Remove from hashset
-	s.hashSet.Remove(name)
-
-	// Remove from priority queue
-	s.priorityQueue.Remove(name)
+	s.hashMap.Remove(identifier)
+	s.priorityQueue.Remove(identifier)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -279,7 +301,7 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	status := map[string]interface{}{
-		"hashset_size":        s.hashSet.Size(),
+		"hashmap_size":        s.hashMap.Size(),
 		"priority_queue_size": s.priorityQueue.Size(),
 		"uptime_seconds":      time.Since(s.startTime).Seconds(),
 	}
@@ -331,14 +353,21 @@ func (s *Server) getQueueItems() []QueueItem {
 	priorities, values := s.priorityQueue.ToSlices()
 	items := make([]QueueItem, len(values))
 
-	for i, value := range values {
+	for i, containerID := range values {
 		priority := priorities[i]
 		timestamp := time.Duration(priority) * time.Microsecond
 		actualTime := s.startTime.Add(timestamp)
 		age := time.Since(actualTime)
 
+		// Get client name, fallback to empty string if not found
+		clientName := ""
+		if name, exists := s.hashMap.Get(containerID); exists {
+			clientName = name
+		}
+
 		items[i] = QueueItem{
-			Name:      value,
+			ID:        containerID,
+			Name:      clientName,
 			Priority:  priority,
 			Timestamp: actualTime.Format("15:04:05"),
 			Age:       s.formatUptime(age),
@@ -350,7 +379,7 @@ func (s *Server) getQueueItems() []QueueItem {
 
 func (s *Server) getStatusData() StatusData {
 	uptime := time.Since(s.startTime)
-	names := s.hashSet.ToSlice()
+	clientEntries := s.hashMap.Entries() // Get client ID-Name pairs
 	queueItems := s.getQueueItems()
 
 	s.workersMutex.RLock()
@@ -375,12 +404,12 @@ func (s *Server) getStatusData() StatusData {
 	}
 
 	return StatusData{
-		HashSetSize:       s.hashSet.Size(),
+		HashSetSize:       s.hashMap.Size(),
 		PriorityQueueSize: s.priorityQueue.Size(),
 		UptimeSeconds:     uptime.Seconds(),
 		UptimeFormatted:   s.formatUptime(uptime),
 		CurrentTime:       time.Now().Format("15:04:05"),
-		Names:             names,
+		ClientEntries:     clientEntries,
 		QueueItems:        queueItems,
 		WorkersRunning:    workersRunning,
 		ClientContainers:  clientContainers,
@@ -524,8 +553,9 @@ func (s *Server) addNameHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := r.FormValue("name")
-	if name != "" {
-		s.hashSet.Insert(name)
+	id := r.FormValue("id")
+	if name != "" && id != "" {
+		s.hashMap.Put(id, name)
 	}
 
 	data := s.getStatusData()
@@ -551,9 +581,23 @@ func (s *Server) removeNameHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if name, ok := request["name"]; ok && name != "" {
-		s.hashSet.Remove(name)
-		s.priorityQueue.Remove(name)
+	if id, ok := request["id"]; ok && id != "" {
+		// Remove by container ID from hashmap
+		if _, existed := s.hashMap.Remove(id); existed {
+			// Also remove from priority queue (using container ID)
+			s.priorityQueue.Remove(id)
+		}
+	} else if name, ok := request["name"]; ok && name != "" {
+		// Fallback: remove by name (search through values)
+		entries := s.hashMap.Entries()
+		for _, entry := range entries {
+			if entry.Value == name {
+				containerID := entry.Key
+				s.hashMap.Remove(containerID)
+				s.priorityQueue.Remove(containerID)
+				break
+			}
+		}
 	}
 
 	data := s.getStatusData()
@@ -590,8 +634,8 @@ func (s *Server) removeFromQueueHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if name, ok := request["name"]; ok && name != "" {
-		s.priorityQueue.Remove(name)
+	if id, ok := request["id"]; ok && id != "" {
+		s.priorityQueue.Remove(id)
 	}
 
 	data := s.getStatusData()
@@ -710,6 +754,28 @@ func (s *Server) bulkCreateClientsHandler(w http.ResponseWriter, r *http.Request
 	statusContent(data).Render(r.Context(), w)
 }
 
+func (s *Server) removeAllClientsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.clientManager == nil {
+		http.Error(w, "Client manager not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Use optimized bulk removal for better performance
+	if err := s.clientManager.RemoveAllClients(r.Context()); err != nil {
+		log.Printf("Failed to remove all clients: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to remove clients: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := s.getStatusData()
+	statusContent(data).Render(r.Context(), w)
+}
+
 func getEnvInt(key string, defaultValue int) int {
 	if str := os.Getenv(key); str != "" {
 		if val, err := strconv.Atoi(str); err == nil {
@@ -781,6 +847,7 @@ func main() {
 	http.HandleFunc("/add-client", server.addClientHandler)
 	http.HandleFunc("/remove-client", server.removeClientHandler)
 	http.HandleFunc("/bulk-create-clients", server.bulkCreateClientsHandler)
+	http.HandleFunc("/remove-all-clients", server.removeAllClientsHandler)
 
 	log.Printf("Server starting on port 8080...")
 

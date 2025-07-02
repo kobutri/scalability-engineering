@@ -5,16 +5,15 @@ import "fmt"
 const morphSwap = "morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}"
 
 type ClientStatus struct {
-	ClientName      string
-	ContainerID     string
-	IdentitySource  string
-	BootstrapURL    string
-	Connected       bool
-	Names           []string
-	NamesCount      int
-	LastUpdate      string
-	ConnectionError string
-	CurrentTime     string
+	ClientName       string
+	ContainerID      string
+	BootstrapURL     string
+	Connected        bool
+	ClientIdentities []ClientIdentity
+	NamesCount       int
+	LastUpdate       string
+	ConnectionError  string
+	CurrentTime      string
 }
 
 templ clientPage(status ClientStatus) {
@@ -240,7 +239,7 @@ templ clientContent(status ClientStatus) {
 			<div class="stat-label">Names Received</div>
 		</div>
 		<div class="stat">
-			<div class="stat-value">{ status.ContainerID[:8] }</div>
+			<div class="stat-value">{ status.ContainerID }</div>
 			<div class="stat-label">Container ID</div>
 		</div>
 	</div>
@@ -248,7 +247,7 @@ templ clientContent(status ClientStatus) {
 	<!-- Identity Information Panel -->
 	<div class="panel" style="margin-bottom: 10px;">
 		<h3>Client Identity Information</h3>
-		<div class="grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+		<div class="grid" style="grid-template-columns: 1fr 1fr; gap: 15px;">
 			<div class="form-group">
 				<label>Client Name:</label>
 				<input type="text" value={ status.ClientName } disabled style="background: #f5f5f5;"/>
@@ -256,10 +255,6 @@ templ clientContent(status ClientStatus) {
 			<div class="form-group">
 				<label>Container ID:</label>
 				<input type="text" value={ status.ContainerID } disabled style="background: #f5f5f5;"/>
-			</div>
-			<div class="form-group">
-				<label>Identity Source:</label>
-				<input type="text" value={ status.IdentitySource } disabled style="background: #f5f5f5;"/>
 			</div>
 		</div>
 		<div class="form-group">
@@ -320,22 +315,24 @@ templ clientContent(status ClientStatus) {
 
 		<!-- Names Display Panel -->
 		<div class="panel">
-			<h3>Names from Bootstrap Server ({ fmt.Sprintf("%d", len(status.Names)) } items)</h3>
+			<h3>Client Identities from Bootstrap Server ({ fmt.Sprintf("%d", len(status.ClientIdentities)) } items)</h3>
 			
-			if len(status.Names) > 0 {
+			if len(status.ClientIdentities) > 0 {
 				<div class="scrollable">
 					<table>
 						<thead>
 							<tr>
 								<th>#</th>
 								<th>Name</th>
+								<th>Container ID</th>
 							</tr>
 						</thead>
 						<tbody>
-							for i, name := range status.Names {
+							for i, identity := range status.ClientIdentities {
 								<tr>
 									<td>{ fmt.Sprintf("%d", i+1) }</td>
-									<td>{ name }</td>
+									<td>{ identity.Name }</td>
+									<td>{ identity.ContainerID }</td>
 								</tr>
 							}
 						</tbody>
@@ -344,23 +341,23 @@ templ clientContent(status ClientStatus) {
 			} else {
 				<div style="padding: 20px; text-align: center; color: #666; border: 1px solid #eee; background: #f9f9f9;">
 					if status.Connected {
-						No names received from server
+						No client identities received from server
 					} else {
-						Connect to server to see names
+						Connect to server to see client identities
 					}
 				</div>
 			}
 		</div>
 	</div>
 
-	<!-- Full width names list as alternative view -->
-	if len(status.Names) > 10 {
+	<!-- Full width client identities list as alternative view -->
+	if len(status.ClientIdentities) > 10 {
 		<div class="panel">
-			<h3>All Names (List View)</h3>
+			<h3>All Client Identities (List View)</h3>
 			<div class="scrollable" style="max-height: 200px;">
-				for i, name := range status.Names {
+				for i, identity := range status.ClientIdentities {
 					<div class="list-item">
-						<strong>{ fmt.Sprintf("%d.", i+1) }</strong> { name }
+						<strong>{ fmt.Sprintf("%d.", i+1) }</strong> { identity.Name } <span style="color: #666;">({ identity.ContainerID })</span>
 					</div>
 				}
 			</div>
