@@ -16,6 +16,115 @@ type ClientStatus struct {
 	CurrentTime      string
 }
 
+
+templ chatDashboard(contacts []ContactWithMessage) {
+    <div class="chat-container">
+        <h1>Chats</h1>
+        <div class="chat-layout" style="display: flex; gap: 20px;">
+            <!-- Linke Seite: Kontaktliste mit letzten Nachrichten -->
+            <div class="contact-list" style="min-width: 300px;">
+                <h2>Kontakte</h2>
+                <ul style="list-style: none; padding: 0;">
+                    for _, contact := range contacts {
+                        <li style="margin-bottom: 8px; border-bottom: 1px solid #eee; padding: 8px 0;">
+                            <button 
+                                hx-get={"/get-messages?containerID=" + contact.ContainerID}
+                                hx-target="#messages"
+                                hx-swap="innerHTML"
+                                style="width: 100%; text-align: left;"
+                            >
+                                <div><strong>{ contact.ContainerID }</strong></div>
+                                <div style="font-size: 0.8em; color: #666;">
+                                    { contact.LastMessage }
+                                </div>
+                                <div style="font-size: 0.7em; color: #999;">
+                                    { formatTime(contact.LastMessageTime) }
+                                </div>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            </div>
+
+            <!-- Rechte Seite: Nachrichtenbereich -->
+            <div class="message-area" style="flex: 1;">
+                <div id="messages">
+                    <p>Wähle einen Kontakt aus, um den vollständigen Chatverlauf anzuzeigen.</p>
+                </div>
+                
+                <!-- Vereinfachtes Formular zum Loggen von Nachrichten -->
+                <form 
+                    method="POST" 
+                    action="/send-message" 
+                    style="margin-top: 20px;"
+                >
+                    <input 
+                        type="text" 
+                        name="containerID" 
+                        placeholder="Empfänger-ID" 
+                        required 
+                        style="width: 100%; margin-bottom: 5px;"
+                    >
+                    <textarea 
+                        name="message" 
+                        placeholder="Nachricht..." 
+                        required 
+                        style="width: 100%; margin-bottom: 5px;"
+                    ></textarea>
+                    <button type="submit">Nachricht loggen</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+	
+}
+
+templ chatStyles() {
+    <style>
+        .contact-list button {
+            background: none;
+            border: none;
+            padding: 8px;
+            cursor: pointer;
+            text-align: left;
+            width: 100%;
+        }
+        .contact-list button:hover {
+            background-color: #f5f5f5;
+        }
+        .message {
+            padding: 8px;
+            margin: 4px 0;
+            border-radius: 4px;
+        }
+        .message.sent {
+            background-color: #e3f2fd;
+            margin-left: 20%;
+        }
+        .message.received {
+            background-color: #f1f1f1;
+            margin-right: 20%;
+        }
+    </style>
+}
+
+// Nachrichten eines Kontakts anzeigen
+templ chatMessages(containerID string, messages []Message) {
+	<div>
+		<h2>Chat mit { containerID }</h2>
+		<div class="message-list" style="margin-bottom: 10px;">
+			for _, msg := range messages {
+				<div class="message" style="border-bottom: 1px solid #eee; padding: 5px 0;">
+					<small>{ msg.Timestamp }</small>
+					<p>{ msg.Message }</p>
+				</div>
+			}
+		</div>
+	</div>
+}
+
+
 templ clientPage(status ClientStatus) {
 	<!DOCTYPE html>
 	<html lang="en">

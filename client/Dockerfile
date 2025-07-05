@@ -1,35 +1,25 @@
 FROM golang:1.24-alpine AS builder
 
-# Install templ
+# Nur templ installieren (kein gcc/musl-dev mehr nötig!)
 RUN go install github.com/a-h/templ/cmd/templ@latest
 
 WORKDIR /app
-
-# Copy go mod files
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
 COPY . .
-
-# Generate templ files
 RUN templ generate
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+# Build OHNE CGO (modernc.org/sqlite benötigt es nicht!)
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -trimpath -o main .
 
-# Final stage
+# Finale Stage (keine sqlite-Runtime-Deps mehr nötig)
 FROM alpine:latest
-
-RUN apk --no-cache add ca-certificates
-
 WORKDIR /root/
 
+# ➕ curl hinzufügen
+RUN apk add --no-cache curl
+
 COPY --from=builder /app/main .
-
-# Expose port
 EXPOSE 9090
-
-CMD ["./main"] 
+CMD ["./main"]

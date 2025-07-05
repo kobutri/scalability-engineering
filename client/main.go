@@ -32,6 +32,15 @@ type Client struct {
 	shutdownChan     chan bool
 }
 
+type Message struct {
+	ContainerID string `json:"container_id"`
+	MessageID   string `json:"message_id"`
+	Timestamp   string `json:"timestamp"`
+	Status      string `json:"status"` // sent, delivered, received
+	Message     string `json:"message"`
+	Port        int    `json:"port"`
+}
+
 // DiscoverClientIdentity discovers the client's identity from environment and system
 func DiscoverClientIdentity() ClientIdentity {
 	identity := ClientIdentity{}
@@ -292,7 +301,120 @@ func (c *Client) aliveHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
+func (c *Client) messageHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("messageHandler called")
+	// CORS-Preflight
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	// Nur POST erlauben
+	if r.Method != http.MethodPost {
+		http.Error(w, "only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var msg Message
+	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+		http.Error(w, fmt.Sprintf("failed to decode message: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Received message from %s: %s", msg.ContainerID, msg.Message)
+
+	// Validierung der erforderlichen Felder
+	if msg.ContainerID == "" || msg.MessageID == "" || msg.Message == "" {
+		http.Error(w, "containerID, messageID and message are required", http.StatusBadRequest)
+		return
+	}
+
+	// Setze Standardwerte falls nicht vorhanden
+	if msg.Timestamp == "" {
+		msg.Timestamp = time.Now().Format(time.RFC3339)
+	}
+	if msg.Status == "" {
+		msg.Status = "received"
+	}
+
+	// Nachricht speichern
+	if err := RcvMessage(msg); err != nil {
+		log.Printf("Failed to store message: %v", err)
+		http.Error(w, fmt.Sprintf("failed to store message: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("message received"))
+}
+
+func (c *Client) chatDashboardHandler(w http.ResponseWriter, r *http.Request) {
+	contacts, err := GetContactsWithLastMessages()
+	if err != nil {
+		http.Error(w, "Fehler beim Laden der Kontakte", http.StatusInternalServerError)
+		return
+	}
+
+	chatDashboard(contacts).Render(r.Context(), w)
+}
+
+func sendMessageHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("sendMessageHandler called")
+
+	// Formular-Daten parsen
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	containerName := r.FormValue("containerID")
+	// Nachricht mit automatisch generierten Feldern erstellen
+	msg := Message{
+		ContainerID: containerName,
+		Port:        12345, // Fester Port
+		MessageID:   generateMessageID(),
+		Timestamp:   time.Now().Format(time.RFC3339),
+		Status:      "sent", // Automatisch auf "sent" setzen
+		Message:     r.FormValue("message"),
+	}
+
+	// JSON kodieren
+	jsonData, err := json.Marshal(msg)
+	if err != nil {
+		http.Error(w, "Failed to create JSON", http.StatusInternalServerError)
+		return
+	}
+
+	receiver := "scalability-engineering-client-" + containerName // Ensure the name has the prefix
+	targetURL := fmt.Sprintf("http://%s:9090/message", receiver)
+
+	log.Printf("Sending message to %s: %s", receiver, msg.Message)
+
+	// REST-POST-Request an den Zielcontainer
+	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to send message to %s: %v", msg.ContainerID, err),
+			http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	log.Printf("Message sent with status: %s", resp.Status)
+	// Erfolgsmeldung zurückgeben
+	contacts, err := GetContactsWithLastMessages()
+	if err != nil {
+		http.Error(w, "Fehler beim Laden der Kontakte", http.StatusInternalServerError)
+		return
+	}
+
+	chatDashboard(contacts).Render(r.Context(), w)
+}
+
+func generateMessageID() string {
+	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
 func main() {
+	InitiateDB()
 	bootstrapURL := os.Getenv("BOOTSTRAP_URL")
 	if bootstrapURL == "" {
 		bootstrapURL = "http://localhost:8080"
@@ -332,6 +454,9 @@ func main() {
 		go client.autoConnectWorker()
 	}
 
+	// Initialize database for message storage
+
+	// Register HTTP handlers
 	http.HandleFunc("/", client.statusHandler)
 	http.HandleFunc("/status-data", client.statusDataHandler)
 	http.HandleFunc("/connect", client.connectHandler)
@@ -339,9 +464,19 @@ func main() {
 	http.HandleFunc("/refresh", client.refreshHandler)
 	http.HandleFunc("/alive", client.aliveHandler)
 
+	//Chats
+	http.HandleFunc("/message", client.messageHandler)    // Receive messages
+	http.HandleFunc("/chat", client.chatDashboardHandler) // Show chat dashboard
+	http.HandleFunc("/send-message", sendMessageHandler)
+
 	log.Printf("Starting client '%s' on port %s", client.GetClientName(), port)
 	log.Printf("Bootstrap server URL: %s", bootstrapURL)
 	log.Printf("Container ID: %s", client.GetIdentity().ContainerID)
 	log.Printf("Auto-connect: %v (retry interval: %v, max retries: %d)", autoConnect, retryInterval, maxRetries)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
+
 }
+
+/*
+curl -X POST http://localhost:8080/bulk-create-clients -d "count=4"
+*/
