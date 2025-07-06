@@ -208,6 +208,9 @@ templ clientPage(status ClientStatus) {
 				<div id="client-content" hx-get="/status-data" hx-trigger="every 3s" hx-swap={ morphSwap } hx-ext="morph">
 					@clientContent(status)
 				</div>
+
+				<!-- Nicht-refreshbarer Chat-Bereich -->
+				<div id="chat-box"></div>
 			</div>
 		</body>
 	</html>
@@ -329,7 +332,7 @@ templ clientContent(status ClientStatus) {
 						</thead>
 						<tbody>
 							for i, identity := range status.ClientIdentities {
-								<tr>
+								<tr hx-get={ fmt.Sprintf("/chat/%s", identity.ContainerID) } hx-target="#chat-box" hx-swap="innerHTML" style="cursor: pointer;">
 									<td>{ fmt.Sprintf("%d", i+1) }</td>
 									<td>{ identity.Name }</td>
 									<td>{ identity.ContainerID }</td>

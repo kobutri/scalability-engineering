@@ -1,0 +1,28 @@
+package main
+
+import "fmt"
+
+templ chatBox(identity ClientIdentity, messages []Message) {
+	<div class="panel" style="margin-top: 20px;">
+		<h3>Chat with { identity.Name }</h3>
+
+		<div id="chat-messages" class="scrollable" style="height: 200px; margin-bottom: 10px;">
+			if len(messages) == 0 {
+				<p style="color: #999;">[No messages yet]</p>
+			} else {
+				for _, m := range messages {
+					<div>
+						<strong>{ m.From }:</strong> { m.Content }
+					</div>
+				}
+			}
+		</div>
+
+		<form hx-post={ fmt.Sprintf("/chat/%s/send", identity.ContainerID) } 
+		      hx-target="#chat-messages" 
+		      hx-swap="beforeend">
+			<input type="text" name="message" placeholder="Type your message..." style="width: 80%;"/>
+			<button type="submit" class="btn-primary">Send</button>
+		</form>
+	</div>
+}

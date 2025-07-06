@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -292,6 +293,75 @@ func (c *Client) aliveHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
+// opens chat
+func (c *Client) chatHandler(w http.ResponseWriter, r *http.Request) {
+	containerID := strings.TrimPrefix(r.URL.Path, "/chat/")
+	chatKey := makeChatKey(c.identity.ContainerID, containerID)
+
+	var peer *ClientIdentity
+	for _, id := range c.clientIdentities {
+		if id.ContainerID == containerID {
+			peer = &id
+			break
+		}
+	}
+	if peer == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	chatMutex.RLock()
+	messages := chatStorage[chatKey]
+	chatMutex.RUnlock()
+
+	chatBox(*peer, messages).Render(r.Context(), w)
+}
+
+// handles received messages
+func (c *Client) chatSendHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form", http.StatusBadRequest)
+		return
+	}
+
+	containerID := strings.TrimPrefix(r.URL.Path, "/chat/")
+	containerID = strings.TrimSuffix(containerID, "/send")
+	msgText := r.FormValue("message")
+
+	msg := Message{
+		From:    c.identity.Name,
+		To:      containerID,
+		Content: msgText,
+		Time:    time.Now(),
+	}
+
+	chatKey := makeChatKey(c.identity.ContainerID, containerID)
+
+	chatMutex.Lock()
+	chatStorage[chatKey] = append(chatStorage[chatKey], msg)
+	chatMutex.Unlock()
+
+	// Nur neue Nachricht als HTML zurückgeben
+	fmt.Fprintf(w, "<div><strong>%s:</strong> %s</div>", msg.From, msg.Content)
+}
+
+type Message struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Content string `json:"content"`
+	Time    time.Time
+}
+
+func makeChatKey(a, b string) string {
+	if a < b {
+		return a + "::" + b
+	}
+	return b + "::" + a
+}
+
+var chatStorage = make(map[string][]Message) // key = containerID
+var chatMutex sync.RWMutex
+
 func main() {
 	bootstrapURL := os.Getenv("BOOTSTRAP_URL")
 	if bootstrapURL == "" {
@@ -338,6 +408,14 @@ func main() {
 	http.HandleFunc("/disconnect", client.disconnectHandler)
 	http.HandleFunc("/refresh", client.refreshHandler)
 	http.HandleFunc("/alive", client.aliveHandler)
+
+	http.HandleFunc("/chat/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/send") {
+			client.chatSendHandler(w, r)
+		} else {
+			client.chatHandler(w, r)
+		}
+	})
 
 	log.Printf("Starting client '%s' on port %s", client.GetClientName(), port)
 	log.Printf("Bootstrap server URL: %s", bootstrapURL)
