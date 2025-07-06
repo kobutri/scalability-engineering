@@ -413,13 +413,14 @@ func generateMessageID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
-func handleGetContacts(w http.ResponseWriter, r *http.Request) {
-	contacts, err := GetContactsWithLastMessages()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	json.NewEncoder(w).Encode(contacts)
+func (c *Client) contactsHandler(w http.ResponseWriter, r *http.Request) {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	log.Printf("[contactsHandler] returning %d contacts", len(c.clientIdentities))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(c.clientIdentities)
 }
 
 func handleGetMessages(w http.ResponseWriter, r *http.Request) {
@@ -439,6 +440,97 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 func (c *Client) whatsAppHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "index.html")
 }
+
+// Kontakte erweitern:
+func (c *Client) expandContacts() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if !c.connected {
+		return
+	}
+
+	newContacts := make(map[string]ClientIdentity)
+	for _, contact := range c.clientIdentities {
+		// 🛑 Self-Query verhindern
+		if contact.ContainerID == c.identity.ContainerID {
+			continue
+		}
+
+		// Anfrage mit Timeout absichern
+		url := fmt.Sprintf("http://%s:9090/contacts", contact.ContainerID)
+		client := http.Client{Timeout: 2 * time.Second}
+
+		log.Printf("Trying to fetch contacts from %s", contact.ContainerID)
+
+		resp, err := client.Get(url)
+		if err != nil {
+			log.Printf("Failed to fetch contacts from %s: %v", contact.ContainerID, err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Unexpected status from %s: %d", contact.ContainerID, resp.StatusCode)
+			continue
+		}
+
+		var foreignContacts []ClientIdentity
+		if err := json.NewDecoder(resp.Body).Decode(&foreignContacts); err != nil {
+			log.Printf("Failed to decode contacts from %s: %v", contact.ContainerID, err)
+			continue
+		}
+
+		for _, foreign := range foreignContacts {
+			// 🛑 Self-Query und Duplikate verhindern
+			if foreign.ContainerID == c.identity.ContainerID {
+				continue
+			}
+			if c.isKnownContact(foreign.ContainerID) {
+				continue
+			}
+			newContacts[foreign.ContainerID] = foreign
+		}
+	}
+
+	// Neue Kontakte hinzufügen
+	if len(newContacts) > 0 {
+		for _, identity := range newContacts {
+			c.clientIdentities = append(c.clientIdentities, identity)
+			log.Printf("Added new contact: %s (%s)", identity.Name, identity.ContainerID)
+		}
+	} else {
+		log.Printf("No new contacts discovered.")
+	}
+}
+
+func (c *Client) isKnownContact(containerID string) bool {
+	for _, id := range c.clientIdentities {
+		if id.ContainerID == containerID {
+			return true
+		}
+	}
+	return false
+}
+
+// Routine Worker:
+func (c *Client) contactExpansionWorker(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.shutdownChan:
+			log.Println("Contact expansion worker shutting down")
+			return
+		case <-ticker.C:
+			log.Println("Expanding contact list...")
+			c.expandContacts()
+		}
+	}
+}
+
+// MAIN
 func main() {
 	InitiateDB()
 	bootstrapURL := os.Getenv("BOOTSTRAP_URL")
@@ -480,10 +572,12 @@ func main() {
 		go client.autoConnectWorker()
 	}
 
+	// Starte contact-expansion worker, um Kontakte periodisch auszubauen
+	go client.contactExpansionWorker(30 * time.Second)
+
 	// Initialize database for message storage
 
 	// Register HTTP handlers
-	http.HandleFunc("/", client.statusHandler)
 	http.HandleFunc("/status-data", client.statusDataHandler)
 	http.HandleFunc("/connect", client.connectHandler)
 	http.HandleFunc("/disconnect", client.disconnectHandler)
@@ -494,9 +588,12 @@ func main() {
 	http.HandleFunc("/message", client.messageHandler)    // Receive messages
 	http.HandleFunc("/chat", client.chatDashboardHandler) // Show chat dashboard
 	http.HandleFunc("/send-message", sendMessageHandler)
-	http.HandleFunc("/contacts", handleGetContacts)
+	http.HandleFunc("/contacts", client.contactsHandler)
 	http.HandleFunc("/messages", handleGetMessages)
 	http.HandleFunc("/chats", client.whatsAppHandler) // Show chat dashboard
+
+	//nach unten verschoben, sonst werden andere Unterpfade abgefangen
+	http.HandleFunc("/", client.statusHandler)
 
 	log.Printf("Starting client '%s' on port %s", client.GetClientName(), port)
 	log.Printf("Bootstrap server URL: %s", bootstrapURL)

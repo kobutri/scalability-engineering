@@ -235,3 +235,31 @@ func printAllMessages() error {
 
 	return nil
 }
+
+func GetKnownIdentities() ([]ClientIdentity, error) {
+	db, err := sql.Open("sqlite", "./chats.db")
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`SELECT DISTINCT containerID FROM Contact`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ClientIdentity
+	for rows.Next() {
+		var containerID string
+		if err := rows.Scan(&containerID); err != nil {
+			return nil, err
+		}
+		// Der Name ist leider nicht in der DB – wir setzen ihn auf "" oder "unknown"
+		result = append(result, ClientIdentity{
+			Name:        "unknown", // oder leer lassen
+			ContainerID: containerID,
+		})
+	}
+	return result, nil
+}
