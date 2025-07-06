@@ -413,6 +413,32 @@ func generateMessageID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
+func handleGetContacts(w http.ResponseWriter, r *http.Request) {
+	contacts, err := GetContactsWithLastMessages()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(contacts)
+}
+
+func handleGetMessages(w http.ResponseWriter, r *http.Request) {
+	containerID := r.URL.Query().Get("containerID")
+	if containerID == "" {
+		http.Error(w, "containerID fehlt", http.StatusBadRequest)
+		return
+	}
+	messages, err := LoadMessagesForClient(containerID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(messages)
+}
+
+func (c *Client) whatsAppHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "index.html")
+}
 func main() {
 	InitiateDB()
 	bootstrapURL := os.Getenv("BOOTSTRAP_URL")
@@ -468,6 +494,9 @@ func main() {
 	http.HandleFunc("/message", client.messageHandler)    // Receive messages
 	http.HandleFunc("/chat", client.chatDashboardHandler) // Show chat dashboard
 	http.HandleFunc("/send-message", sendMessageHandler)
+	http.HandleFunc("/contacts", handleGetContacts)
+	http.HandleFunc("/messages", handleGetMessages)
+	http.HandleFunc("/chats", client.whatsAppHandler) // Show chat dashboard
 
 	log.Printf("Starting client '%s' on port %s", client.GetClientName(), port)
 	log.Printf("Bootstrap server URL: %s", bootstrapURL)
