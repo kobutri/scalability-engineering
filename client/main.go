@@ -30,6 +30,10 @@ type Client struct {
 	retryInterval    time.Duration
 	maxRetries       int
 	shutdownChan     chan bool
+
+	queryQueue  *PriorityQueue[int64, string] // Peers, die wir abfragen
+	subsetQueue *PriorityQueue[int64, string] // Peers, die wir weitergeben
+	startTime   time.Time
 }
 
 type Message struct {
@@ -84,6 +88,10 @@ func NewClient(bootstrapURL string, autoConnect bool, retryInterval time.Duratio
 		retryInterval:    retryInterval,
 		maxRetries:       maxRetries,
 		shutdownChan:     make(chan bool, 1),
+
+		startTime:   time.Now(),
+		queryQueue:  NewPriorityQueue[int64, string](),
+		subsetQueue: NewPriorityQueue[int64, string](),
 	}
 }
 
@@ -134,6 +142,13 @@ func (c *Client) connect() error {
 	c.connectionError = ""
 	c.lastUpdate = time.Now()
 	log.Printf("Connected to bootstrap server. Received %d client identities", len(clientIdentities))
+
+	for _, identity := range clientIdentities { // vom BS erhaltene peers in die Queues packen
+		if identity.ContainerID != c.identity.ContainerID {
+			c.insertIntoQueues(identity)
+		}
+	}
+
 	return nil
 }
 
@@ -418,7 +433,6 @@ func (c *Client) contactsHandler(w http.ResponseWriter, r *http.Request) {
 	defer c.mutex.RUnlock()
 
 	log.Printf("[contactsHandler] returning %d contacts", len(c.clientIdentities))
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(c.clientIdentities)
 }
@@ -441,7 +455,14 @@ func (c *Client) whatsAppHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "index.html")
 }
 
-// Kontakte erweitern:
+// Befüllen der Queues mit clients
+func (c *Client) insertIntoQueues(identity ClientIdentity) {
+	now := time.Since(c.startTime).Microseconds()
+	c.queryQueue.Insert(now, identity.ContainerID)
+	c.subsetQueue.Insert(now, identity.ContainerID)
+}
+
+// Kontakte erweitern
 func (c *Client) expandContacts() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -450,58 +471,53 @@ func (c *Client) expandContacts() {
 		return
 	}
 
-	newContacts := make(map[string]ClientIdentity)
-	for _, contact := range c.clientIdentities {
-		// 🛑 Self-Query verhindern
-		if contact.ContainerID == c.identity.ContainerID {
-			continue
-		}
-
-		// Anfrage mit Timeout absichern
-		url := fmt.Sprintf("http://%s:9090/contacts", contact.ContainerID)
-		client := http.Client{Timeout: 2 * time.Second}
-
-		log.Printf("Trying to fetch contacts from %s", contact.ContainerID)
-
-		resp, err := client.Get(url)
-		if err != nil {
-			log.Printf("Failed to fetch contacts from %s: %v", contact.ContainerID, err)
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("Unexpected status from %s: %d", contact.ContainerID, resp.StatusCode)
-			continue
-		}
-
-		var foreignContacts []ClientIdentity
-		if err := json.NewDecoder(resp.Body).Decode(&foreignContacts); err != nil {
-			log.Printf("Failed to decode contacts from %s: %v", contact.ContainerID, err)
-			continue
-		}
-
-		for _, foreign := range foreignContacts {
-			// 🛑 Self-Query und Duplikate verhindern
-			if foreign.ContainerID == c.identity.ContainerID {
-				continue
-			}
-			if c.isKnownContact(foreign.ContainerID) {
-				continue
-			}
-			newContacts[foreign.ContainerID] = foreign
-		}
+	currentTime := time.Since(c.startTime).Microseconds()
+	_, containerID, ok := c.queryQueue.ExtractMin()
+	if !ok {
+		log.Println("No contacts to query.")
+		return
 	}
 
-	// Neue Kontakte hinzufügen
-	if len(newContacts) > 0 {
-		for _, identity := range newContacts {
-			c.clientIdentities = append(c.clientIdentities, identity)
-			log.Printf("Added new contact: %s (%s)", identity.Name, identity.ContainerID)
-		}
-	} else {
-		log.Printf("No new contacts discovered.")
+	if containerID == c.identity.ContainerID {
+		return
 	}
+
+	url := fmt.Sprintf("http://%s:9090/contacts", containerID)
+	client := http.Client{Timeout: 2 * time.Second}
+
+	log.Printf("Trying to fetch contacts from %s", containerID)
+
+	resp, err := client.Get(url)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Printf("Failed to fetch contacts from %s: %v", containerID, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var foreignContacts []ClientIdentity
+	if err := json.NewDecoder(resp.Body).Decode(&foreignContacts); err != nil {
+		log.Printf("Failed to decode contacts from %s: %v", containerID, err)
+		return
+	}
+
+	added := 0
+	log.Printf("Received %d contacts from %s", len(foreignContacts), containerID)
+	for _, foreign := range foreignContacts {
+		if foreign.ContainerID == c.identity.ContainerID || c.isKnownContact(foreign.ContainerID) {
+			continue
+		}
+		c.clientIdentities = append(c.clientIdentities, foreign)
+		c.insertIntoQueues(foreign)
+		log.Printf("Added new contact: %s (%s)", foreign.Name, foreign.ContainerID)
+		added++
+	}
+
+	if added == 0 {
+		log.Printf("No new contacts discovered from %s", containerID)
+	}
+
+	// Reinsert the current contact at the end of the queue
+	c.queryQueue.Insert(currentTime, containerID)
 }
 
 func (c *Client) isKnownContact(containerID string) bool {
