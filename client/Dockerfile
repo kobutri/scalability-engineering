@@ -1,28 +1,39 @@
+# syntax=docker/dockerfile:1
 FROM golang:1.24-alpine AS builder
 
-# Nur templ installieren (kein gcc/musl-dev mehr nötig!)
+# Install templ
 RUN go install github.com/a-h/templ/cmd/templ@latest
 
 WORKDIR /workspace
 
-# Copy the entire workspace structure
-COPY shared/ ./shared/
-COPY client/ ./client/
+# Copy go.mod and go.sum first for better caching
+COPY shared/go.mod shared/go.sum ./shared/
+COPY client/go.mod client/go.sum ./client/
 
-# Set working directory to client for build
+# Download dependencies with cache mount
 WORKDIR /workspace/client
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
-RUN go mod download
-RUN templ generate
+# Copy source code
+COPY shared/ ../shared/
+COPY client/ .
 
-# Build OHNE CGO (modernc.org/sqlite benötigt es nicht!)
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -trimpath -o main .
+# Generate templ templates with cache mount
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    templ generate
 
-# Finale Stage (keine sqlite-Runtime-Deps mehr nötig)
+# Build with cache mounts for faster builds
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -trimpath -o main .
+
+# Final stage
 FROM alpine:latest
 WORKDIR /root/
 
-# ➕ curl hinzufügen
+# Add curl for health checks
 RUN apk add --no-cache curl
 
 COPY --from=builder /workspace/client/main .

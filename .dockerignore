@@ -1,0 +1,65 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Docker files
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Build artifacts
+tmp/
+build/
+dist/
+*.out
+*.exe
+*.dll
+*.so
+*.dylib
+main
+bootstrap/main
+client/main
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+*.log
+
+# Go specific
+vendor/
+*.test
+*.prof
+coverage.out
+
+# Development files
+*.tmp
+*.bak
+*.orig
+.env*
+!.env.example
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Data files (should not be in build context)
+data/
+*.json
+*.db
+*.sqlite
+
+# Air config (for development)
+.air.toml
+tmp/
+
+# Templ generated files (will be regenerated)
+*_templ.go 

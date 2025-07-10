@@ -273,6 +273,63 @@ func (c *Client) getStatus() ClientStatus {
 	return status
 }
 
+// getStatusData returns shared.StatusData for the new unified UI
+func (c *Client) getStatusData() shared.StatusData {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	allClients := c.clientManager.GetAllClients()
+	queueItems := c.clientManager.GetQueueItems()
+	config := c.clientManager.GetConfig()
+
+	// Convert client identities to entries format
+	clientEntries := make([]shared.Entry[string, string], len(allClients))
+	for i, client := range allClients {
+		clientEntries[i] = shared.Entry[string, string]{
+			Key:   client.ContainerID,
+			Value: client.Name,
+		}
+	}
+
+	uptime := time.Since(c.startTime)
+
+	return shared.StatusData{
+		ServiceType:       "client",
+		ServiceName:       c.identity.Name,
+		ContainerID:       c.identity.ContainerID,
+		BootstrapURL:      c.bootstrapURL,
+		Connected:         c.connected,
+		ConnectionError:   c.connectionError,
+		LastUpdate:        c.lastUpdate.Format("15:04:05"),
+		HashSetSize:       len(allClients),
+		PriorityQueueSize: len(queueItems),
+		ClientEntries:     clientEntries,
+		QueueItems:        queueItems,
+		ClientIdentities:  allClients, // For backward compatibility
+		Config: shared.ServiceConfig{
+			Timeout:             config.Timeout.String(),
+			MaxAge:              config.MaxAge.String(),
+			MinAge:              config.MinAge.String(),
+			HealthCheckInterval: config.HealthCheckInterval.String(),
+			CleanupInterval:     config.CleanupInterval.String(),
+			SubsetSize:          config.SubsetSize,
+		},
+		WorkersRunning:  c.clientManager.IsWorkersRunning(),
+		UptimeSeconds:   uptime.Seconds(),
+		UptimeFormatted: shared.FormatDuration(uptime),
+		CurrentTime:     time.Now().Format("15:04:05"),
+	}
+}
+
+// getUIConfig returns the UI configuration for the client
+func (c *Client) getUIConfig() shared.UIConfig {
+	uiConfig := shared.GetDefaultUIConfig("client")
+	uiConfig.Title = fmt.Sprintf("Client Control Panel - %s", c.identity.Name)
+	uiConfig.ShowClientManagement = false // No Docker containers for clients
+	uiConfig.Features = []string{"stats", "config", "clients", "queue", "connection", "chat"}
+	return uiConfig
+}
+
 func (c *Client) connectHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -280,8 +337,9 @@ func (c *Client) connectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c.connect()
-	status := c.getStatus()
-	clientContent(status).Render(r.Context(), w)
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (c *Client) disconnectHandler(w http.ResponseWriter, r *http.Request) {
@@ -291,8 +349,9 @@ func (c *Client) disconnectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c.disconnect()
-	status := c.getStatus()
-	clientContent(status).Render(r.Context(), w)
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (c *Client) refreshHandler(w http.ResponseWriter, r *http.Request) {
@@ -304,18 +363,21 @@ func (c *Client) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	if c.connected {
 		c.connect() // Reconnect to refresh names
 	}
-	status := c.getStatus()
-	clientContent(status).Render(r.Context(), w)
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (c *Client) statusHandler(w http.ResponseWriter, r *http.Request) {
-	status := c.getStatus()
-	clientPage(status).Render(r.Context(), w)
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServicePage(data, uiConfig).Render(r.Context(), w)
 }
 
 func (c *Client) statusDataHandler(w http.ResponseWriter, r *http.Request) {
-	status := c.getStatus()
-	clientContent(status).Render(r.Context(), w)
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (c *Client) aliveHandler(w http.ResponseWriter, r *http.Request) {
@@ -458,6 +520,197 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 
 func (c *Client) whatsAppHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "index.html")
+}
+
+// Client management handlers (same as bootstrap but for client's own client list)
+func (c *Client) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	config := c.clientManager.GetConfig()
+
+	// Update timeout
+	if timeoutStr := r.FormValue("timeout"); timeoutStr != "" {
+		if timeout, err := time.ParseDuration(timeoutStr); err == nil {
+			config.Timeout = timeout
+		}
+	}
+
+	// Update max age
+	if maxAgeStr := r.FormValue("maxAge"); maxAgeStr != "" {
+		if maxAge, err := time.ParseDuration(maxAgeStr); err == nil {
+			config.MaxAge = maxAge
+		}
+	}
+
+	// Update min age
+	if minAgeStr := r.FormValue("minAge"); minAgeStr != "" {
+		if minAge, err := time.ParseDuration(minAgeStr); err == nil {
+			config.MinAge = minAge
+		}
+	}
+
+	// Update health check interval
+	if healthCheckIntervalStr := r.FormValue("healthCheckInterval"); healthCheckIntervalStr != "" {
+		if healthCheckInterval, err := time.ParseDuration(healthCheckIntervalStr); err == nil {
+			config.HealthCheckInterval = healthCheckInterval
+		}
+	}
+
+	// Update cleanup interval
+	if cleanupIntervalStr := r.FormValue("cleanupInterval"); cleanupIntervalStr != "" {
+		if cleanupInterval, err := time.ParseDuration(cleanupIntervalStr); err == nil {
+			config.CleanupInterval = cleanupInterval
+		}
+	}
+
+	// Update subset size
+	if subsetSizeStr := r.FormValue("subsetSize"); subsetSizeStr != "" {
+		if subsetSize, err := strconv.Atoi(subsetSizeStr); err == nil && subsetSize > 0 {
+			config.SubsetSize = subsetSize
+		}
+	}
+
+	// Apply the updated configuration
+	c.clientManager.UpdateConfig(config)
+
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+}
+
+func (c *Client) startWorkersHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	c.clientManager.StartWorkers()
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+}
+
+func (c *Client) stopWorkersHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	c.clientManager.StopWorkers()
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+}
+
+func (c *Client) addNameHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	name := r.FormValue("name")
+	id := r.FormValue("id")
+	if name != "" && id != "" {
+		identity := shared.ClientIdentity{
+			Name:        name,
+			ContainerID: id,
+		}
+		c.clientManager.AddClient(identity)
+	}
+
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+}
+
+func (c *Client) removeNameHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var request map[string]string
+	if err := json.Unmarshal(body, &request); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if id, ok := request["id"]; ok && id != "" {
+		c.clientManager.RemoveClient(id)
+	} else if name, ok := request["name"]; ok && name != "" {
+		// Fallback: remove by name (search through clients)
+		allClients := c.clientManager.GetAllClients()
+		for _, client := range allClients {
+			if client.Name == name {
+				c.clientManager.RemoveClient(client.ContainerID)
+				break
+			}
+		}
+	}
+
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+}
+
+func (c *Client) clearQueueHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	c.clientManager.Clear()
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+}
+
+func (c *Client) removeFromQueueHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var request map[string]string
+	if err := json.Unmarshal(body, &request); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if id, ok := request["id"]; ok && id != "" {
+		c.clientManager.RemoveClient(id)
+	}
+
+	data := c.getStatusData()
+	uiConfig := c.getUIConfig()
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 // Befüllen der Queues mit clients
@@ -622,6 +875,15 @@ func main() {
 	http.HandleFunc("/disconnect", client.disconnectHandler)
 	http.HandleFunc("/refresh", client.refreshHandler)
 	http.HandleFunc("/alive", client.aliveHandler)
+
+	// Client management handlers (same as bootstrap but for client's own client list)
+	http.HandleFunc("/update-config", client.updateConfigHandler)
+	http.HandleFunc("/start-workers", client.startWorkersHandler)
+	http.HandleFunc("/stop-workers", client.stopWorkersHandler)
+	http.HandleFunc("/add-name", client.addNameHandler)
+	http.HandleFunc("/remove-name", client.removeNameHandler)
+	http.HandleFunc("/clear-queue", client.clearQueueHandler)
+	http.HandleFunc("/remove-from-queue", client.removeFromQueueHandler)
 
 	//Chats
 	http.HandleFunc("/message", client.messageHandler)    // Receive messages

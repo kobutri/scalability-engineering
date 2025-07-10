@@ -3,12 +3,9 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/cli"
@@ -88,49 +85,15 @@ func loadComposeProject(composeFile, projectName string) (*types.Project, error)
 	return project, nil
 }
 
-// LoadNamesFromFile loads names from the names.json file
-func (cm *ClientManager) LoadNamesFromFile() ([]string, error) {
-	namesFile := filepath.Join(cm.workingDir, "..", "data", "names.json")
-	data, err := os.ReadFile(namesFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read names file: %w", err)
-	}
-
-	var namesData NamesData
-	if err := json.Unmarshal(data, &namesData); err != nil {
-		return nil, fmt.Errorf("failed to parse names file: %w", err)
-	}
-
-	return namesData.Elements, nil
-}
-
 // GenerateRandomName generates a random client name
 func (cm *ClientManager) GenerateRandomName() (string, error) {
-	names, err := cm.LoadNamesFromFile()
-	if err != nil {
-		// Fallback names if file cannot be read
-		names = []string{"client", "worker", "node", "service", "app"}
-	}
-
-	// Use fallback names if the loaded names array is empty
-	if len(names) == 0 {
-		names = []string{"client", "worker", "node", "service", "app"}
-	}
-
-	// Pick a random name
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(names))))
+	// Generate random integer
+	randomInt, err := rand.Int(rand.Reader, big.NewInt(10000))
 	if err != nil {
 		return "", fmt.Errorf("failed to generate random number: %w", err)
 	}
-	baseName := names[n.Int64()]
 
-	// Add random suffix
-	suffix, err := rand.Int(rand.Reader, big.NewInt(10000))
-	if err != nil {
-		return "", fmt.Errorf("failed to generate random suffix: %w", err)
-	}
-
-	return fmt.Sprintf("%s-%d", baseName, suffix.Int64()), nil
+	return fmt.Sprintf("client-%d", randomInt.Int64()), nil
 }
 
 // getContainerPorts extracts port mappings from a container
@@ -319,11 +282,10 @@ func (cm *ClientManager) ensureImageExists(ctx context.Context, imageName string
 	}
 
 	if !imageFound {
-		// Suggest building the image
+		// Suggest building the image with cache
 		if service.Build != nil && service.Build.Context != "" {
-			buildPath := filepath.Join(cm.workingDir, "..", service.Build.Context)
-			return fmt.Errorf("image %s not found. Please build it first using: docker build -t %s %s",
-				imageName, imageName, buildPath)
+			return fmt.Errorf("image %s not found. Please build it first using: ./build-cache.sh build client (or docker-compose build client)",
+				imageName)
 		}
 
 		return fmt.Errorf("image %s not found and no build context available", imageName)

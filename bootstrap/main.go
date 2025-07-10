@@ -51,6 +51,66 @@ func (s *Server) getRandomSubset() []shared.ClientIdentity {
 	return s.clientManager.GetRandomSubset()
 }
 
+func (s *Server) getStatusData() shared.StatusData {
+	uptime := time.Since(s.startTime)
+	allClients := s.clientManager.GetAllClients()
+	queueItems := s.clientManager.GetQueueItems()
+	config := s.clientManager.GetConfig()
+
+	// Convert client identities to entries format
+	clientEntries := make([]shared.Entry[string, string], len(allClients))
+	for i, client := range allClients {
+		clientEntries[i] = shared.Entry[string, string]{
+			Key:   client.ContainerID,
+			Value: client.Name,
+		}
+	}
+
+	// Get client containers for Docker management
+	var clientContainers []shared.ClientContainer
+	if s.dockerClientManager != nil {
+		containers, err := s.dockerClientManager.GetClientContainers(context.Background())
+		if err != nil {
+			log.Printf("Failed to get client containers: %v", err)
+		} else {
+			// Convert to shared.ClientContainer
+			clientContainers = make([]shared.ClientContainer, len(containers))
+			for i, container := range containers {
+				clientContainers[i] = shared.ClientContainer{
+					Name:     container.Name,
+					Status:   container.Status,
+					ID:       container.CreatedAt, // Use CreatedAt as ID since ID field doesn't exist
+					HostPort: container.HostPort,
+					WebURL:   container.WebURL,
+				}
+			}
+		}
+	}
+
+	return shared.StatusData{
+		ServiceType:       "bootstrap",
+		ServiceName:       "Bootstrap Server",
+		ContainerID:       "bootstrap-server",
+		HashSetSize:       s.clientManager.Size(),
+		PriorityQueueSize: len(queueItems),
+		UptimeSeconds:     uptime.Seconds(),
+		UptimeFormatted:   shared.FormatDuration(uptime),
+		CurrentTime:       time.Now().Format("15:04:05"),
+		ClientEntries:     clientEntries,
+		QueueItems:        queueItems,
+		WorkersRunning:    s.clientManager.IsWorkersRunning(),
+		ClientContainers:  clientContainers,
+		Config: shared.ServiceConfig{
+			Timeout:             config.Timeout.String(),
+			MaxAge:              config.MaxAge.String(),
+			MinAge:              config.MinAge.String(),
+			HealthCheckInterval: config.HealthCheckInterval.String(),
+			CleanupInterval:     config.CleanupInterval.String(),
+			SubsetSize:          config.SubsetSize,
+		},
+	}
+}
+
 func (s *Server) connectHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -127,90 +187,16 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(status)
 }
 
-func (s *Server) formatUptime(duration time.Duration) string {
-	if duration.Hours() >= 24 {
-		days := int(duration.Hours()) / 24
-		hours := int(duration.Hours()) % 24
-		return fmt.Sprintf("%dd %dh", days, hours)
-	} else if duration.Hours() >= 1 {
-		hours := int(duration.Hours())
-		minutes := int(duration.Minutes()) % 60
-		return fmt.Sprintf("%dh %dm", hours, minutes)
-	} else if duration.Minutes() >= 1 {
-		minutes := int(duration.Minutes())
-		seconds := int(duration.Seconds()) % 60
-		return fmt.Sprintf("%dm %ds", minutes, seconds)
-	}
-	return fmt.Sprintf("%.1fs", duration.Seconds())
-}
-
-func (s *Server) getStatusData() StatusData {
-	uptime := time.Since(s.startTime)
-	allClients := s.clientManager.GetAllClients()
-	sharedQueueItems := s.clientManager.GetQueueItems()
-	config := s.clientManager.GetConfig()
-
-	// Convert client identities to entries format
-	clientEntries := make([]shared.Entry[string, string], len(allClients))
-	for i, client := range allClients {
-		clientEntries[i] = shared.Entry[string, string]{
-			Key:   client.ContainerID,
-			Value: client.Name,
-		}
-	}
-
-	// Convert shared QueueItems to local QueueItems
-	queueItems := make([]QueueItem, len(sharedQueueItems))
-	for i, item := range sharedQueueItems {
-		queueItems[i] = QueueItem{
-			ID:        item.ID,
-			Name:      item.Name,
-			Priority:  item.Priority,
-			Timestamp: item.Timestamp,
-			Age:       item.Age,
-		}
-	}
-
-	// Get client containers
-	var clientContainers []ClientContainer
-	if s.dockerClientManager != nil {
-		containers, err := s.dockerClientManager.GetClientContainers(context.Background())
-		if err != nil {
-			log.Printf("Failed to get client containers: %v", err)
-		} else {
-			clientContainers = containers
-		}
-	}
-
-	return StatusData{
-		HashSetSize:       s.clientManager.Size(),
-		PriorityQueueSize: len(queueItems),
-		UptimeSeconds:     uptime.Seconds(),
-		UptimeFormatted:   s.formatUptime(uptime),
-		CurrentTime:       time.Now().Format("15:04:05"),
-		ClientEntries:     clientEntries,
-		QueueItems:        queueItems,
-		WorkersRunning:    s.clientManager.IsWorkersRunning(),
-		ClientContainers:  clientContainers,
-		Config: ServerConfig{
-			Timeout:             config.Timeout.String(),
-			MaxAge:              config.MaxAge.String(),
-			MinAge:              config.MinAge.String(),
-			HealthCheckInterval: config.HealthCheckInterval.String(),
-			CleanupInterval:     config.CleanupInterval.String(),
-			SubsetSize:          config.SubsetSize,
-		},
-	}
-}
-
 func (s *Server) statusPageHandler(w http.ResponseWriter, r *http.Request) {
 	data := s.getStatusData()
-	statusPage(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServicePage(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) statusDataHandler(w http.ResponseWriter, r *http.Request) {
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
@@ -272,7 +258,8 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 	s.clientManager.UpdateConfig(config)
 
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) startWorkersHandler(w http.ResponseWriter, r *http.Request) {
@@ -283,7 +270,8 @@ func (s *Server) startWorkersHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.clientManager.StartWorkers()
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) stopWorkersHandler(w http.ResponseWriter, r *http.Request) {
@@ -294,7 +282,8 @@ func (s *Server) stopWorkersHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.clientManager.StopWorkers()
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) addNameHandler(w http.ResponseWriter, r *http.Request) {
@@ -319,7 +308,8 @@ func (s *Server) addNameHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) removeNameHandler(w http.ResponseWriter, r *http.Request) {
@@ -355,7 +345,8 @@ func (s *Server) removeNameHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) clearQueueHandler(w http.ResponseWriter, r *http.Request) {
@@ -366,7 +357,8 @@ func (s *Server) clearQueueHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.clientManager.Clear()
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) removeFromQueueHandler(w http.ResponseWriter, r *http.Request) {
@@ -393,7 +385,8 @@ func (s *Server) removeFromQueueHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 // Client management handlers
@@ -426,7 +419,8 @@ func (s *Server) addClientHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) removeClientHandler(w http.ResponseWriter, r *http.Request) {
@@ -466,7 +460,8 @@ func (s *Server) removeClientHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) bulkCreateClientsHandler(w http.ResponseWriter, r *http.Request) {
@@ -505,7 +500,8 @@ func (s *Server) bulkCreateClientsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func (s *Server) removeAllClientsHandler(w http.ResponseWriter, r *http.Request) {
@@ -527,7 +523,8 @@ func (s *Server) removeAllClientsHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	data := s.getStatusData()
-	statusContent(data).Render(r.Context(), w)
+	uiConfig := shared.GetDefaultUIConfig("bootstrap")
+	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
 }
 
 func getEnvInt(key string, defaultValue int) int {

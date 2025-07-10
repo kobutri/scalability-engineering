@@ -3,7 +3,7 @@ module bootstrap
 go 1.24
 
 require (
-	github.com/a-h/templ v0.3.898
+	github.com/a-h/templ v0.3.906
 	github.com/compose-spec/compose-go/v2 v2.6.5
 	github.com/docker/docker v28.2.2+incompatible
 	github.com/docker/go-connections v0.5.0

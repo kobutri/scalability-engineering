@@ -9,7 +9,7 @@ require shared v0.0.0-00010101000000-000000000000
 replace shared => ../shared
 
 require (
-	github.com/a-h/templ v0.3.898
+	github.com/a-h/templ v0.3.906
 	modernc.org/sqlite v1.38.0
 )
 
