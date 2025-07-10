@@ -516,6 +516,25 @@ func (c *Client) expandContacts() {
 		log.Printf("No new contacts discovered from %s", containerID)
 	}
 
+	total := len(c.clientIdentities)
+	log.Printf("Client %s knows %d contacts:", c.identity.Name, total)
+	for _, contact := range c.clientIdentities {
+		log.Printf(" - %s (%s)", contact.Name, contact.ContainerID)
+	}
+
+	// 👉 Queue-Ausgabe
+	log.Printf("Query Queue (%d entries):", c.queryQueue.Size())
+	_, qVals := c.queryQueue.ToSlices()
+	for _, id := range qVals {
+		log.Printf(" • %s", id)
+	}
+
+	log.Printf("Subset Queue (%d entries):", c.subsetQueue.Size())
+	_, sVals := c.subsetQueue.ToSlices()
+	for _, id := range sVals {
+		log.Printf(" • %s", id)
+	}
+
 	// Reinsert the current contact at the end of the queue
 	c.queryQueue.Insert(currentTime, containerID)
 }
