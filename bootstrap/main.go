@@ -12,11 +12,14 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"shared"
 )
 
 type ClientIdentity struct {
 	Name        string `json:"name"`
 	ContainerID string `json:"container_id"`
+	Hostname    string `json:"domain_name"`
 }
 
 const (
@@ -29,8 +32,8 @@ const (
 )
 
 type Server struct {
-	hashMap       *HashMap[string, string] // id -> client name
-	priorityQueue *PriorityQueue[int64, string]
+	hashMap       *shared.HashMap[string, string] // id -> client name
+	priorityQueue *shared.PriorityQueue[int64, string]
 	startTime     time.Time
 
 	// Configuration
@@ -52,14 +55,14 @@ type Server struct {
 
 func NewServer(dataPath string) *Server {
 	// Create HashMap with persistence
-	persistConfig := PersistenceConfig{
+	persistConfig := shared.PersistenceConfig{
 		Enabled:          true,
 		FilePath:         dataPath,
 		SnapshotInterval: 30 * time.Second,
 		MaxRetries:       3,
 	}
 
-	hashMap := NewHashMapWithPersistence[string, string](persistConfig)
+	hashMap := shared.NewHashMapWithPersistence[string, string](persistConfig)
 
 	// Try to load existing data
 	if _, err := os.Stat(dataPath); err == nil {
@@ -81,7 +84,7 @@ func NewServer(dataPath string) *Server {
 
 	return &Server{
 		hashMap:             hashMap,
-		priorityQueue:       NewPriorityQueue[int64, string](),
+		priorityQueue:       shared.NewPriorityQueue[int64, string](),
 		startTime:           time.Now(),
 		timeout:             defaultTimeout,
 		maxAge:              defaultMaxAge,

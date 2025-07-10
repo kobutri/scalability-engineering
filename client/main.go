@@ -11,11 +11,14 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"shared"
 )
 
 type ClientIdentity struct {
 	Name        string `json:"name"`
 	ContainerID string `json:"container_id"`
+	Hostname    string `json:"domain_name"`
 }
 
 type Client struct {
@@ -31,8 +34,8 @@ type Client struct {
 	maxRetries       int
 	shutdownChan     chan bool
 
-	queryQueue  *PriorityQueue[int64, string] // Peers, die wir abfragen
-	subsetQueue *PriorityQueue[int64, string] // Peers, die wir weitergeben
+	queryQueue  *shared.PriorityQueue[int64, string] // Peers, die wir abfragen
+	subsetQueue *shared.PriorityQueue[int64, string] // Peers, die wir weitergeben
 	startTime   time.Time
 }
 
@@ -90,8 +93,8 @@ func NewClient(bootstrapURL string, autoConnect bool, retryInterval time.Duratio
 		shutdownChan:     make(chan bool, 1),
 
 		startTime:   time.Now(),
-		queryQueue:  NewPriorityQueue[int64, string](),
-		subsetQueue: NewPriorityQueue[int64, string](),
+		queryQueue:  shared.NewPriorityQueue[int64, string](),
+		subsetQueue: shared.NewPriorityQueue[int64, string](),
 	}
 }
 

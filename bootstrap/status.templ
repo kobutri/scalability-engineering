@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"shared"
 )
 
 const morphSwap = "morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}"
@@ -13,7 +14,7 @@ type StatusData struct {
 	UptimeSeconds     float64
 	UptimeFormatted   string
 	CurrentTime       string
-	ClientEntries     []Entry[string, string] // Contains ID-Name pairs
+	ClientEntries     []shared.Entry[string, string] // Contains ID-Name pairs
 	QueueItems        []QueueItem
 	Config            ServerConfig
 	WorkersRunning    bool

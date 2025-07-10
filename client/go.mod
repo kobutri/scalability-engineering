@@ -1,8 +1,12 @@
 module client
 
-go 1.23.0
+go 1.24
 
 toolchain go1.24.4
+
+require shared v0.0.0-00010101000000-000000000000
+
+replace shared => ../shared
 
 require (
 	github.com/a-h/templ v0.3.898

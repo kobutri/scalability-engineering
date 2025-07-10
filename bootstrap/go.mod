@@ -7,6 +7,7 @@ require (
 	github.com/compose-spec/compose-go/v2 v2.6.5
 	github.com/docker/docker v28.2.2+incompatible
 	github.com/docker/go-connections v0.5.0
+	shared v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -63,3 +64,5 @@ require (
 )
 
 tool github.com/a-h/templ/cmd/templ
+
+replace shared => ../shared
