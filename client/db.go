@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"shared"
 	"time"
 
 	_ "modernc.org/sqlite" // SQLite driver
@@ -236,7 +237,7 @@ func printAllMessages() error {
 	return nil
 }
 
-func GetKnownIdentities() ([]ClientIdentity, error) {
+func GetKnownIdentities() ([]shared.ClientIdentity, error) {
 	db, err := sql.Open("sqlite", "./chats.db")
 	if err != nil {
 		return nil, err
@@ -249,14 +250,14 @@ func GetKnownIdentities() ([]ClientIdentity, error) {
 	}
 	defer rows.Close()
 
-	var result []ClientIdentity
+	var result []shared.ClientIdentity
 	for rows.Next() {
 		var containerID string
 		if err := rows.Scan(&containerID); err != nil {
 			return nil, err
 		}
 		// Der Name ist leider nicht in der DB – wir setzen ihn auf "" oder "unknown"
-		result = append(result, ClientIdentity{
+		result = append(result, shared.ClientIdentity{
 			Name:        "unknown", // oder leer lassen
 			ContainerID: containerID,
 		})

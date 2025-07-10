@@ -15,24 +15,18 @@ import (
 	"shared"
 )
 
-type ClientIdentity struct {
-	Name        string `json:"name"`
-	ContainerID string `json:"container_id"`
-	Hostname    string `json:"domain_name"`
-}
-
 type Client struct {
-	identity         ClientIdentity
-	bootstrapURL     string
-	connected        bool
-	clientIdentities []ClientIdentity
-	lastUpdate       time.Time
-	connectionError  string
-	mutex            sync.RWMutex
-	autoConnect      bool
-	retryInterval    time.Duration
-	maxRetries       int
-	shutdownChan     chan bool
+	identity        shared.ClientIdentity
+	bootstrapURL    string
+	connected       bool
+	clientManager   *shared.ClientManager
+	lastUpdate      time.Time
+	connectionError string
+	mutex           sync.RWMutex
+	autoConnect     bool
+	retryInterval   time.Duration
+	maxRetries      int
+	shutdownChan    chan bool
 
 	queryQueue  *shared.PriorityQueue[int64, string] // Peers, die wir abfragen
 	subsetQueue *shared.PriorityQueue[int64, string] // Peers, die wir weitergeben
@@ -49,8 +43,8 @@ type Message struct {
 }
 
 // DiscoverClientIdentity discovers the client's identity from environment and system
-func DiscoverClientIdentity() ClientIdentity {
-	identity := ClientIdentity{}
+func DiscoverClientIdentity() shared.ClientIdentity {
+	identity := shared.ClientIdentity{}
 
 	// Try CLIENT_NAME environment variable first (set by bootstrap)
 	if name := os.Getenv("CLIENT_NAME"); name != "" {
@@ -81,16 +75,21 @@ func NewClient(bootstrapURL string, autoConnect bool, retryInterval time.Duratio
 	log.Printf("Discovered client identity: Name='%s', ContainerID='%s'",
 		identity.Name, identity.ContainerID)
 
+	// Create client manager with persistence
+	config := shared.DefaultClientManagerConfig()
+	config.PersistenceConfig.FilePath = fmt.Sprintf("../data/client-%s.json", identity.ContainerID)
+	clientManager := shared.NewClientManager(config)
+
 	return &Client{
-		identity:         identity,
-		bootstrapURL:     bootstrapURL,
-		connected:        false,
-		clientIdentities: []ClientIdentity{},
-		lastUpdate:       time.Now(),
-		autoConnect:      autoConnect,
-		retryInterval:    retryInterval,
-		maxRetries:       maxRetries,
-		shutdownChan:     make(chan bool, 1),
+		identity:      identity,
+		bootstrapURL:  bootstrapURL,
+		connected:     false,
+		clientManager: clientManager,
+		lastUpdate:    time.Now(),
+		autoConnect:   autoConnect,
+		retryInterval: retryInterval,
+		maxRetries:    maxRetries,
+		shutdownChan:  make(chan bool, 1),
 
 		startTime:   time.Now(),
 		queryQueue:  shared.NewPriorityQueue[int64, string](),
@@ -102,7 +101,7 @@ func (c *Client) GetClientName() string {
 	return c.identity.Name
 }
 
-func (c *Client) GetIdentity() ClientIdentity {
+func (c *Client) GetIdentity() shared.ClientIdentity {
 	return c.identity
 }
 
@@ -133,24 +132,25 @@ func (c *Client) connect() error {
 		return fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 
-	var clientIdentities []ClientIdentity
+	var clientIdentities []shared.ClientIdentity
 	if err := json.NewDecoder(resp.Body).Decode(&clientIdentities); err != nil {
 		c.connectionError = fmt.Sprintf("Failed to decode response: %v", err)
 		c.connected = false
 		return err
 	}
 
-	c.clientIdentities = clientIdentities
+	// Add clients to the manager
+	for _, identity := range clientIdentities {
+		if identity.ContainerID != c.identity.ContainerID {
+			c.clientManager.AddClient(identity)
+			c.insertIntoQueues(identity)
+		}
+	}
+
 	c.connected = true
 	c.connectionError = ""
 	c.lastUpdate = time.Now()
 	log.Printf("Connected to bootstrap server. Received %d client identities", len(clientIdentities))
-
-	for _, identity := range clientIdentities { // vom BS erhaltene peers in die Queues packen
-		if identity.ContainerID != c.identity.ContainerID {
-			c.insertIntoQueues(identity)
-		}
-	}
 
 	return nil
 }
@@ -172,7 +172,7 @@ func (c *Client) disconnect() error {
 	defer resp.Body.Close()
 
 	c.connected = false
-	c.clientIdentities = []ClientIdentity{}
+	c.clientManager.Clear()
 	c.connectionError = ""
 	c.lastUpdate = time.Now()
 	log.Printf("Disconnected from bootstrap server")
@@ -243,10 +243,13 @@ func (c *Client) autoConnectWorker() {
 	}
 }
 
-// Shutdown gracefully stops the auto-connect worker
+// Shutdown gracefully stops the auto-connect worker and client manager
 func (c *Client) Shutdown() {
 	if c.autoConnect {
 		close(c.shutdownChan)
+	}
+	if c.clientManager != nil {
+		c.clientManager.Close()
 	}
 }
 
@@ -254,13 +257,14 @@ func (c *Client) getStatus() ClientStatus {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
+	allClients := c.clientManager.GetAllClients()
 	status := ClientStatus{
 		ClientName:       c.identity.Name,
 		ContainerID:      c.identity.ContainerID,
 		BootstrapURL:     c.bootstrapURL,
 		Connected:        c.connected,
-		ClientIdentities: append([]ClientIdentity{}, c.clientIdentities...), // Copy slice
-		NamesCount:       len(c.clientIdentities),
+		ClientIdentities: allClients,
+		NamesCount:       len(allClients),
 		LastUpdate:       c.lastUpdate.Format("15:04:05"),
 		ConnectionError:  c.connectionError,
 		CurrentTime:      time.Now().Format("15:04:05"),
@@ -432,12 +436,10 @@ func generateMessageID() string {
 }
 
 func (c *Client) contactsHandler(w http.ResponseWriter, r *http.Request) {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
-	log.Printf("[contactsHandler] returning %d contacts", len(c.clientIdentities))
+	allClients := c.clientManager.GetAllClients()
+	log.Printf("[contactsHandler] returning %d contacts", len(allClients))
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(c.clientIdentities)
+	json.NewEncoder(w).Encode(allClients)
 }
 
 func handleGetMessages(w http.ResponseWriter, r *http.Request) {
@@ -459,7 +461,7 @@ func (c *Client) whatsAppHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Befüllen der Queues mit clients
-func (c *Client) insertIntoQueues(identity ClientIdentity) {
+func (c *Client) insertIntoQueues(identity shared.ClientIdentity) {
 	now := time.Since(c.startTime).Microseconds()
 	c.queryQueue.Insert(now, identity.ContainerID)
 	c.subsetQueue.Insert(now, identity.ContainerID)
@@ -497,7 +499,7 @@ func (c *Client) expandContacts() {
 	}
 	defer resp.Body.Close()
 
-	var foreignContacts []ClientIdentity
+	var foreignContacts []shared.ClientIdentity
 	if err := json.NewDecoder(resp.Body).Decode(&foreignContacts); err != nil {
 		log.Printf("Failed to decode contacts from %s: %v", containerID, err)
 		return
@@ -506,10 +508,10 @@ func (c *Client) expandContacts() {
 	added := 0
 	log.Printf("Received %d contacts from %s", len(foreignContacts), containerID)
 	for _, foreign := range foreignContacts {
-		if foreign.ContainerID == c.identity.ContainerID || c.isKnownContact(foreign.ContainerID) {
+		if foreign.ContainerID == c.identity.ContainerID || c.clientManager.ContainsClient(foreign.ContainerID) {
 			continue
 		}
-		c.clientIdentities = append(c.clientIdentities, foreign)
+		c.clientManager.AddClient(foreign)
 		c.insertIntoQueues(foreign)
 		log.Printf("Added new contact: %s (%s)", foreign.Name, foreign.ContainerID)
 		added++
@@ -519,9 +521,10 @@ func (c *Client) expandContacts() {
 		log.Printf("No new contacts discovered from %s", containerID)
 	}
 
-	total := len(c.clientIdentities)
+	allClients := c.clientManager.GetAllClients()
+	total := len(allClients)
 	log.Printf("Client %s knows %d contacts:", c.identity.Name, total)
-	for _, contact := range c.clientIdentities {
+	for _, contact := range allClients {
 		log.Printf(" - %s (%s)", contact.Name, contact.ContainerID)
 	}
 
@@ -543,12 +546,7 @@ func (c *Client) expandContacts() {
 }
 
 func (c *Client) isKnownContact(containerID string) bool {
-	for _, id := range c.clientIdentities {
-		if id.ContainerID == containerID {
-			return true
-		}
-	}
-	return false
+	return c.clientManager.ContainsClient(containerID)
 }
 
 // Routine Worker:
@@ -604,6 +602,9 @@ func main() {
 	}
 
 	client := NewClient(bootstrapURL, autoConnect, retryInterval, maxRetries)
+
+	// Start client manager workers
+	client.clientManager.StartWorkers()
 
 	// Start auto-connect worker if enabled
 	if autoConnect {

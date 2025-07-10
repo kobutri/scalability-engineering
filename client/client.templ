@@ -1,6 +1,7 @@
 package main
 
 import "fmt"
+import "shared"
 
 const morphSwap = "morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}"
 
@@ -9,7 +10,7 @@ type ClientStatus struct {
 	ContainerID      string
 	BootstrapURL     string
 	Connected        bool
-	ClientIdentities []ClientIdentity
+	ClientIdentities []shared.ClientIdentity
 	NamesCount       int
 	LastUpdate       string
 	ConnectionError  string

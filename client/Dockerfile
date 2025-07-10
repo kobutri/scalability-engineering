@@ -3,11 +3,16 @@ FROM golang:1.24-alpine AS builder
 # Nur templ installieren (kein gcc/musl-dev mehr nötig!)
 RUN go install github.com/a-h/templ/cmd/templ@latest
 
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
+WORKDIR /workspace
 
-COPY . .
+# Copy the entire workspace structure
+COPY shared/ ./shared/
+COPY client/ ./client/
+
+# Set working directory to client for build
+WORKDIR /workspace/client
+
+RUN go mod download
 RUN templ generate
 
 # Build OHNE CGO (modernc.org/sqlite benötigt es nicht!)
@@ -20,6 +25,6 @@ WORKDIR /root/
 # ➕ curl hinzufügen
 RUN apk add --no-cache curl
 
-COPY --from=builder /app/main .
+COPY --from=builder /workspace/client/main .
 EXPOSE 9090
 CMD ["./main"]

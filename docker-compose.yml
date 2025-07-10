@@ -1,8 +1,8 @@
 services:
   bootstrap:
     build:
-      context: ./bootstrap
-      dockerfile: ${DOCKERFILE:-Dockerfile}
+      context: .
+      dockerfile: ./bootstrap/${DOCKERFILE:-Dockerfile}
     ports:
       - "8080:8080"
     container_name: bootstrap-server
@@ -28,8 +28,8 @@ services:
 
   client:
     build:
-      context: ./client
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./client/Dockerfile
     ports:
       - "${CLIENT_PORT:-9090}:9090"
     environment:

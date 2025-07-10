@@ -222,7 +222,7 @@ func (cm *ClientManager) CreateClient(ctx context.Context, clientName string) er
 	// Prepare environment variables
 	env := []string{
 		fmt.Sprintf("CLIENT_NAME=%s", clientName),
-		fmt.Sprintf("BOOTSTRAP_URL=http://bootstrap:8080"),
+		"BOOTSTRAP_URL=http://bootstrap:8080",
 		"PORT=9090",
 	}
 
