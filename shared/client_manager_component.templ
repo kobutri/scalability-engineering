@@ -147,8 +147,8 @@ templ controlSection(data ClientManagerData) {
 templ dataSection(data ClientManagerData) {
 	<div class="panel">
 		<h3>Connected Clients ({ fmt.Sprintf("%d", len(data.ClientEntries)) } clients)</h3>
-		<form id="add-client-form" hx-post="/client-manager/add-client" hx-trigger="submit" hx-target="#client-manager" hx-swap={morphSwap} class="inline-form">
-			<input type="text" name="id" placeholder="Client ID..." required style="width: 120px;"/>
+		<form id="add-client-form" hx-post="/client-manager/add-client" hx-trigger="submit" hx-target="#client-manager" hx-swap={morphSwap}>
+			<input type="text" name="container_id" placeholder="Client ID..." required style="width: 120px;"/>
 			<input type="text" name="name" placeholder="Client name..." required style="width: 120px;"/>
 			<button type="submit">Add Client</button>
 		</form>

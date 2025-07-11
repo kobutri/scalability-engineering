@@ -431,7 +431,7 @@ func dataSection(data ClientManagerData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" class=\"inline-form\"><input type=\"text\" name=\"id\" placeholder=\"Client ID...\" required style=\"width: 120px;\"> <input type=\"text\" name=\"name\" placeholder=\"Client name...\" required style=\"width: 120px;\"> <button type=\"submit\">Add Client</button></form><div class=\"scrollable\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\"><input type=\"text\" name=\"container_id\" placeholder=\"Client ID...\" required style=\"width: 120px;\"> <input type=\"text\" name=\"name\" placeholder=\"Client name...\" required style=\"width: 120px;\"> <button type=\"submit\">Add Client</button></form><div class=\"scrollable\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

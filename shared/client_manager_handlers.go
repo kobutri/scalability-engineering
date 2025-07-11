@@ -140,7 +140,7 @@ func (h *ClientManagerHandlers) addClientHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	containerID := r.FormValue("id")
+	containerID := r.FormValue("container_id")
 	name := r.FormValue("name")
 
 	if containerID == "" || name == "" {
