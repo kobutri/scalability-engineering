@@ -31,7 +31,7 @@ templ ClientDashboard(data ClientData) {
 					BootstrapURL:    data.BootstrapURL,
 					WorkersRunning:  data.ClientManagerData.WorkersRunning,
 				})
-				<div id="status-content">
+				<div id="status-content" hx-ext="morph">
 					@ClientContent(data)
 				</div>
 			</div>
@@ -51,7 +51,9 @@ templ ClientContent(data ClientData) {
 			})
 		</div>
 		<!-- Client Manager Component -->
-		@shared.ClientManagerComponent(data.ClientManagerData)
+		<div class="client-manager" id="client-manager" hx-ext="morph">
+			@shared.ClientManagerComponent(data.ClientManagerData)
+		</div>
 	</div>
 }
 
@@ -142,7 +144,7 @@ templ chatDashboard(contacts []ContactWithMessage) {
 									Time: { contact.LastMessageTime } | Status: { contact.LastMessageStatus }
 								</div>
 							</div>
-							<form class="send-form" action="/send-message" method="POST">
+							<form id={ "send-form-" + contact.ContainerID } class="send-form" action="/send-message" method="POST">
 								<input type="hidden" name="containerID" value={ contact.ContainerID }/>
 								<input type="text" name="message" placeholder="Type your message..." required/>
 								<button type="submit">Send</button>

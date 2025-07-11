@@ -46,7 +46,9 @@ templ BootstrapDashboard(data BootstrapData) {
 templ BootstrapContent(data BootstrapData) {
 	<div class="main-content">
 		<!-- Use the shared client manager component -->
-		@shared.ClientManagerComponent(data.ClientManagerData)
+		<div class="client-manager" id="client-manager" hx-ext="morph">
+			@shared.ClientManagerComponent(data.ClientManagerData)
+		</div>
 		
 		@clientManagementSection(data)
 	</div>

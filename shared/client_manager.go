@@ -213,8 +213,14 @@ func (cm *ClientManager) GetAllClients() []ClientIdentity {
 }
 
 // GetRandomSubset returns a random subset of clients
-func (cm *ClientManager) GetRandomSubset() []ClientIdentity {
-	containerIDs := cm.priorityQueue.GetRandomSubset(cm.config.SubsetSize)
+// If subsetSize is provided, it overrides the configured SubsetSize
+func (cm *ClientManager) GetRandomSubset(subsetSize ...int) []ClientIdentity {
+	size := cm.config.SubsetSize
+	if len(subsetSize) > 0 && subsetSize[0] > 0 {
+		size = subsetSize[0]
+	}
+
+	containerIDs := cm.priorityQueue.GetRandomSubset(size)
 	identities := make([]ClientIdentity, 0, len(containerIDs))
 
 	for _, containerID := range containerIDs {

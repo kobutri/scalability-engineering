@@ -28,9 +28,8 @@ type Client struct {
 	maxRetries      int
 	shutdownChan    chan bool
 
-	queryQueue  *shared.PriorityQueue[int64, string] // Peers, die wir abfragen
-	subsetQueue *shared.PriorityQueue[int64, string] // Peers, die wir weitergeben
-	startTime   time.Time
+	queryQueue *shared.PriorityQueue[int64, string] // clients since last queried
+	startTime  time.Time
 
 	// Shared client manager handlers
 	clientManagerHandlers *shared.ClientManagerHandlers
@@ -81,26 +80,42 @@ func NewClient(bootstrapURL string, autoConnect bool, retryInterval time.Duratio
 	// Create client manager with persistence
 	config := shared.DefaultClientManagerConfig()
 	config.PersistenceConfig.FilePath = fmt.Sprintf("../data/client-%s.json", identity.ContainerID)
+
+	// Create the client first so we can reference it in the callbacks
+	client := &Client{
+		identity:      identity,
+		bootstrapURL:  bootstrapURL,
+		connected:     false,
+		lastUpdate:    time.Now(),
+		autoConnect:   autoConnect,
+		retryInterval: retryInterval,
+		maxRetries:    maxRetries,
+		shutdownChan:  make(chan bool, 1),
+		startTime:     time.Now(),
+		queryQueue:    shared.NewPriorityQueue[int64, string](),
+	}
+
+	// Set up callbacks to maintain queryQueue
+	config.PriorityQueueAddCallback = func(containerID string, priority int64) {
+		// Use -priority as key (negative priority for reverse order)
+		client.queryQueue.Insert(-priority, containerID)
+	}
+
+	config.PriorityQueueRemoveCallback = func(containerID string, priority int64) {
+		// Remove from queryQueue
+		client.queryQueue.Remove(containerID)
+	}
+
 	clientManager := shared.NewClientManager(config)
 
 	// Create shared client manager handlers
 	clientManagerHandlers := shared.NewClientManagerHandlers(clientManager)
 
-	return &Client{
-		identity:              identity,
-		bootstrapURL:          bootstrapURL,
-		connected:             false,
-		clientManager:         clientManager,
-		lastUpdate:            time.Now(),
-		autoConnect:           autoConnect,
-		retryInterval:         retryInterval,
-		maxRetries:            maxRetries,
-		shutdownChan:          make(chan bool, 1),
-		startTime:             time.Now(),
-		queryQueue:            shared.NewPriorityQueue[int64, string](),
-		subsetQueue:           shared.NewPriorityQueue[int64, string](),
-		clientManagerHandlers: clientManagerHandlers,
-	}
+	// Update the client with the remaining fields
+	client.clientManager = clientManager
+	client.clientManagerHandlers = clientManagerHandlers
+
+	return client
 }
 
 func (c *Client) GetClientName() string {
@@ -145,18 +160,13 @@ func (c *Client) connect() error {
 		return err
 	}
 
-	// Add clients to the manager
-	for _, identity := range clientIdentities {
-		if identity.ContainerID != c.identity.ContainerID {
-			c.clientManager.AddClient(identity)
-			c.insertIntoQueues(identity)
-		}
-	}
+	// Add received client identities to client manager
+	newContactsCount := c.addNewContacts(clientIdentities)
 
 	c.connected = true
 	c.connectionError = ""
 	c.lastUpdate = time.Now()
-	log.Printf("Connected to bootstrap server. Received %d client identities", len(clientIdentities))
+	log.Printf("Connected to bootstrap server. Received %d client identities, %d were new", len(clientIdentities), newContactsCount)
 
 	return nil
 }
@@ -496,10 +506,29 @@ func generateMessageID() string {
 }
 
 func (c *Client) contactsHandler(w http.ResponseWriter, r *http.Request) {
-	allClients := c.clientManager.GetAllClients()
-	log.Printf("[contactsHandler] returning %d contacts", len(allClients))
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Accept contacts from request body and add them to client manager
+	var receivedContacts []shared.ClientIdentity
+	if err := json.NewDecoder(r.Body).Decode(&receivedContacts); err != nil {
+		log.Printf("[contactsHandler] Failed to decode contacts: %v", err)
+		http.Error(w, "Failed to decode contacts", http.StatusBadRequest)
+		return
+	}
+
+	// Add new contacts to client manager
+	newContactsCount := c.addNewContacts(receivedContacts)
+
+	log.Printf("[contactsHandler] POST received %d contacts, %d were new",
+		len(receivedContacts), newContactsCount)
+
+	// Return a random subset of contacts
+	randomSubset := c.clientManager.GetRandomSubset(15) // Return up to 15 clients
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(allClients)
+	json.NewEncoder(w).Encode(randomSubset)
 }
 
 func handleGetMessages(w http.ResponseWriter, r *http.Request) {
@@ -520,93 +549,68 @@ func (c *Client) whatsAppHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "index.html")
 }
 
-// Befüllen der Queues mit clients
-func (c *Client) insertIntoQueues(identity shared.ClientIdentity) {
-	now := time.Since(c.startTime).Microseconds()
-	c.queryQueue.Insert(now, identity.ContainerID)
-	c.subsetQueue.Insert(now, identity.ContainerID)
+// addNewContacts adds contacts to the client manager, returning the count of new contacts added
+func (c *Client) addNewContacts(contacts []shared.ClientIdentity) int {
+	newContactsCount := 0
+	for _, contact := range contacts {
+		if !c.clientManager.ContainsClient(contact.ContainerID) && contact.ContainerID != c.identity.ContainerID {
+			c.clientManager.AddClient(contact)
+			newContactsCount++
+		}
+	}
+	return newContactsCount
 }
 
-// Kontakte erweitern
+// expandContacts extracts a client from queryQueue and queries it for more contacts
 func (c *Client) expandContacts() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	if !c.connected {
-		return
-	}
-
-	currentTime := time.Since(c.startTime).Microseconds()
+	// Extract the oldest element from queryQueue (highest priority after negation)
 	_, containerID, ok := c.queryQueue.ExtractMin()
 	if !ok {
-		log.Println("No contacts to query.")
+		log.Println("No clients in query queue to expand contacts from")
 		return
 	}
 
-	if containerID == c.identity.ContainerID {
+	log.Printf("Expanding contacts by querying %s", containerID)
+
+	// Get a random subset of current clients to send
+	randomSubset := c.clientManager.GetRandomSubset()
+
+	// Always include our own identity in the subset
+	randomSubset = append(randomSubset, c.identity)
+
+	// Marshal the subset for POST request
+	jsonData, err := json.Marshal(randomSubset)
+	if err != nil {
+		log.Printf("Failed to marshal random subset: %v", err)
 		return
 	}
 
-	url := fmt.Sprintf("http://%s:9090/contacts", containerID)
-	client := http.Client{Timeout: 2 * time.Second}
-
-	log.Printf("Trying to fetch contacts from %s", containerID)
-
-	resp, err := client.Get(url)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Printf("Failed to fetch contacts from %s: %v", containerID, err)
+	// Make POST request to the client's contacts endpoint
+	targetURL := fmt.Sprintf("http://%s:9090/contacts", containerID)
+	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Failed to query contacts from %s: %v", containerID, err)
 		return
 	}
 	defer resp.Body.Close()
 
-	var foreignContacts []shared.ClientIdentity
-	if err := json.NewDecoder(resp.Body).Decode(&foreignContacts); err != nil {
-		log.Printf("Failed to decode contacts from %s: %v", containerID, err)
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Contacts query to %s returned status %d", containerID, resp.StatusCode)
 		return
 	}
 
-	added := 0
-	log.Printf("Received %d contacts from %s", len(foreignContacts), containerID)
-	for _, foreign := range foreignContacts {
-		if foreign.ContainerID == c.identity.ContainerID || c.clientManager.ContainsClient(foreign.ContainerID) {
-			continue
-		}
-		c.clientManager.AddClient(foreign)
-		c.insertIntoQueues(foreign)
-		log.Printf("Added new contact: %s (%s)", foreign.Name, foreign.ContainerID)
-		added++
+	// Parse response
+	var receivedContacts []shared.ClientIdentity
+	if err := json.NewDecoder(resp.Body).Decode(&receivedContacts); err != nil {
+		log.Printf("Failed to decode contacts response from %s: %v", containerID, err)
+		return
 	}
 
-	if added == 0 {
-		log.Printf("No new contacts discovered from %s", containerID)
-	}
+	// Add new contacts to client manager
+	newContactsCount := c.addNewContacts(receivedContacts)
 
-	allClients := c.clientManager.GetAllClients()
-	total := len(allClients)
-	log.Printf("Client %s knows %d contacts:", c.identity.Name, total)
-	for _, contact := range allClients {
-		log.Printf(" - %s (%s)", contact.Name, contact.ContainerID)
-	}
-
-	// 👉 Queue-Ausgabe
-	log.Printf("Query Queue (%d entries):", c.queryQueue.Size())
-	_, qVals := c.queryQueue.ToSlices()
-	for _, id := range qVals {
-		log.Printf(" • %s", id)
-	}
-
-	log.Printf("Subset Queue (%d entries):", c.subsetQueue.Size())
-	_, sVals := c.subsetQueue.ToSlices()
-	for _, id := range sVals {
-		log.Printf(" • %s", id)
-	}
-
-	// Reinsert the current contact at the end of the queue
-	c.queryQueue.Insert(currentTime, containerID)
-}
-
-func (c *Client) isKnownContact(containerID string) bool {
-	return c.clientManager.ContainsClient(containerID)
+	log.Printf("Contact expansion from %s completed: received %d contacts, %d were new",
+		containerID, len(receivedContacts), newContactsCount)
 }
 
 // Routine Worker:
