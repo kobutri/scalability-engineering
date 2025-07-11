@@ -1,0 +1,433 @@
+package shared
+
+import "fmt"
+
+// ClientManagerComponent renders the shared client manager component
+templ ClientManagerComponent(data ClientManagerData) {
+		@statsSection(data)
+		<div class="data-grid">
+			@controlSection(data)
+			@dataSection(data)
+		</div>
+}
+
+templ statsSection(data ClientManagerData) {
+	<div class="stats">
+		<div class="stat">
+			<div class="stat-value">{ fmt.Sprintf("%d", data.HashSetSize) }</div>
+			<div class="stat-label">Client Count</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ fmt.Sprintf("%d", data.PriorityQueueSize) }</div>
+			<div class="stat-label">Queue Size</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ data.Config.Timeout }</div>
+			<div class="stat-label">Health Timeout</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ fmt.Sprintf("%d", data.Config.SubsetSize) }</div>
+			<div class="stat-label">Subset Size</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ data.Config.MaxAge }</div>
+			<div class="stat-label">Max Age</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ data.Config.MinAge }</div>
+			<div class="stat-label">Min Age</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ data.Config.HealthCheckInterval }</div>
+			<div class="stat-label">Check Interval</div>
+		</div>
+		<div class="stat">
+			<div class="stat-value">{ data.Config.CleanupInterval }</div>
+			<div class="stat-label">Cleanup Interval</div>
+		</div>
+	</div>
+}
+
+templ controlSection(data ClientManagerData) {
+	<div class="panel">
+		<h3>Configuration</h3>
+		<!-- Smart updating form -->
+		<div class="scrollable">
+			<form id="config-form" hx-post="/client-manager/update-config" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}">
+				<div class="form-group">
+					<label>Health Check Timeout:</label>
+					<input
+						type="text"
+						name="timeout"
+						id="timeout-input"
+						value={ data.Config.Timeout }
+						placeholder="e.g. 500ms"
+					/>
+				</div>
+				<div class="form-group">
+					<label>Max Age:</label>
+					<input
+						type="text"
+						name="maxAge"
+						id="maxage-input"
+						value={ data.Config.MaxAge }
+						placeholder="e.g. 10s"
+					/>
+				</div>
+				<div class="form-group">
+					<label>Min Age:</label>
+					<input
+						type="text"
+						name="minAge"
+						id="minage-input"
+						value={ data.Config.MinAge }
+						placeholder="e.g. 2s"
+					/>
+				</div>
+				<div class="form-group">
+					<label>Health Check Interval:</label>
+					<input
+						type="text"
+						name="healthCheckInterval"
+						id="interval-input"
+						value={ data.Config.HealthCheckInterval }
+						placeholder="e.g. 100ms"
+					/>
+				</div>
+				<div class="form-group">
+					<label>Cleanup Interval:</label>
+					<input
+						type="text"
+						name="cleanupInterval"
+						id="cleanup-input"
+						value={ data.Config.CleanupInterval }
+						placeholder="e.g. 1s"
+					/>
+				</div>
+				<div class="form-group">
+					<label>Subset Size:</label>
+					<input
+						type="number"
+						name="subsetSize"
+						id="subset-input"
+						value={ fmt.Sprintf("%d", data.Config.SubsetSize) }
+						min="1"
+					/>
+				</div>
+				<button type="submit">Update Config</button>
+			</form>
+		</div>
+		<hr/>
+		<div class="form-group">
+			<label>Background Workers:</label>
+			if data.WorkersRunning {
+				<button hx-post="/client-manager/stop-workers" hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" class="btn-danger">Stop Workers</button>
+			} else {
+				<button hx-post="/client-manager/start-workers" hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" class="btn-success">Start Workers</button>
+			}
+		</div>
+	</div>
+}
+
+templ dataSection(data ClientManagerData) {
+	<div class="panel">
+		<h3>Connected Clients ({ fmt.Sprintf("%d", len(data.ClientEntries)) } clients)</h3>
+		<form hx-post="/client-manager/add-client" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" class="inline-form">
+			<input type="text" name="id" placeholder="Client ID..." required style="width: 120px;"/>
+			<input type="text" name="name" placeholder="Client name..." required style="width: 120px;"/>
+			<button type="submit">Add Client</button>
+		</form>
+		<div class="scrollable">
+			if len(data.ClientEntries) > 0 {
+				<table>
+					<thead>
+						<tr>
+							<th>Container ID</th>
+							<th>Client Name</th>
+							<th>Action</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, entry := range data.ClientEntries {
+							<tr>
+								<td>{ entry.Key }</td>
+								<td>{ entry.Value }</td>
+								<td>
+									<button hx-post="/client-manager/remove-client" hx-vals={ fmt.Sprintf("{\"id\":\"%s\"}", entry.Key) } hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" hx-ext="json-enc" class="btn-danger">Remove</button>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			} else {
+				<div class="list-item">No clients connected</div>
+			}
+		</div>
+	</div>
+	<div class="panel">
+		<h3>Priority Queue ({ fmt.Sprintf("%d", len(data.QueueItems)) } items)</h3>
+		<form hx-post="/client-manager/clear-queue" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}">
+			<button type="submit" class="btn-danger">Clear Queue</button>
+		</form>
+		<div class="scrollable">
+			if len(data.QueueItems) > 0 {
+				<table>
+					<thead>
+						<tr>
+							<th>Container ID</th>
+							<th>Client Name</th>
+							<th>Age</th>
+							<th>Timestamp</th>
+							<th>Action</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, item := range data.QueueItems {
+							<tr>
+								<td>{ item.ID }</td>
+								<td>{ item.Name }</td>
+								<td>{ item.Age }</td>
+								<td>{ item.Timestamp }</td>
+								<td>
+									<button hx-post="/client-manager/remove-from-queue" hx-vals={ fmt.Sprintf("{\"id\":\"%s\"}", item.ID) } hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" hx-ext="json-enc" class="btn-danger">Remove</button>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			} else {
+				<div class="list-item">Queue is empty</div>
+			}
+		</div>
+	</div>
+}
+
+// SharedStyles contains common CSS styles used across services
+templ SharedStyles() {
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+		html, body {
+			height: 100%;
+			margin: 0;
+			padding: 0;
+		}
+		body {
+			font-family: monospace;
+			background: #f5f5f5;
+			font-size: 14px;
+			display: flex;
+			flex-direction: column;
+			padding: 8px;
+			box-sizing: border-box;
+		}
+		.container {
+			max-width: 1400px;
+			width: 100%;
+			height: 100%;
+			display: flex;
+			flex-direction: column;
+		}
+		.header {
+			background: #fff;
+			border: 1px solid #ddd;
+			padding: 8px;
+			margin-bottom: 8px;
+			flex-shrink: 0;
+		}
+		.header h1 {
+			margin: 0;
+			font-size: 18px;
+		}
+		.grid {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			max-height: 300px;
+			gap: 8px;
+			margin-bottom: 8px;
+		}
+		.grid.control-grid {
+			grid-template-columns: 1fr;
+			max-width: 400px;
+		}
+		.data-grid {
+			display: grid;
+			grid-template-columns: 1fr 1fr 1fr;
+			gap: 8px;
+			margin-bottom: 8px;
+			flex-shrink: 0;
+			max-height: 50%;
+		}
+		.client-management {
+			display: flex;
+			flex-direction: column;
+			flex: 1;
+			min-height: 0;
+		}
+		.client-management .scrollable {
+			flex: 1;
+			min-height: 200px;
+		}
+		.panel {
+			display: flex;
+			flex-direction: column;
+			height: 100%;
+			min-height: 0;
+			background: #fff;
+			border: 1px solid #ddd;
+			padding: 8px;
+		}
+		.panel h3 {
+			margin: 0 0 8px 0;
+			font-size: 13px;
+			padding-bottom: 4px;
+		}
+		.main-content {
+			display: flex;
+			flex-direction: column;
+			flex: 1;
+			min-height: 0;
+		}
+		.stats {
+			display: grid;
+			grid-template-columns: repeat(8, 1fr);
+			gap: 8px;
+			margin-bottom: 8px;
+			max-height: 120px;
+			flex-shrink: 0;
+		}
+		.stat {
+			background: #fff;
+			border: 1px solid #ddd;
+			padding: 8px;
+			text-align: center;
+		}
+		.stat-value {
+			font-size: 16px;
+			font-weight: bold;
+		}
+		.stat-label {
+			font-size: 11px;
+			color: #666;
+		}
+		.scrollable {
+			overflow-y: auto;
+			border: 1px solid #ddd;
+			background: #fff;
+		}
+		.list-item {
+			padding: 4px 8px;
+			border-bottom: 1px solid #eee;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+		.list-item:last-child {
+			border-bottom: none;
+		}
+		.list-item:hover {
+			background: #f9f9f9;
+		}
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			font-size: 11px;
+		}
+		th, td {
+			padding: 4px;
+			text-align: left;
+			border-bottom: 1px solid #eee;
+		}
+		th {
+			background: #f9f9f9;
+			font-weight: bold;
+		}
+		.form-group {
+			margin-bottom: 8px;
+		}
+		.form-group label {
+			display: block;
+			margin-bottom: 2px;
+			font-size: 11px;
+		}
+		input, select, button {
+			padding: 4px;
+			border: 1px solid #ddd;
+			font-family: monospace;
+			font-size: 11px;
+		}
+		button {
+			background: #fff;
+			cursor: pointer;
+		}
+		button:hover {
+			background: #f0f0f0;
+		}
+		.btn-danger {
+			background: #ffe6e6;
+			color: #d00;
+		}
+		.btn-danger:hover {
+			background: #ffcccc;
+		}
+		.btn-success {
+			background: #e6ffe6;
+			color: #060;
+		}
+		.btn-success:hover {
+			background: #ccffcc;
+		}
+		.btn-primary {
+			background: #e6f3ff;
+			color: #0066cc;
+		}
+		.btn-primary:hover:not(:disabled) {
+			background: #cce6ff;
+		}
+		.connection-status {
+			padding: 8px 12px;
+			border-radius: 3px;
+			font-weight: bold;
+			margin-bottom: 10px;
+		}
+		.connection-status.connected {
+			background: #e6ffe6;
+			color: #060;
+		}
+		.connection-status.disconnected {
+			background: #ffe6e6;
+			color: #d00;
+		}
+		.error-message {
+			background: #ffe6e6;
+			color: #d00;
+			padding: 8px 12px;
+			border-radius: 3px;
+			margin-bottom: 10px;
+			font-size: 12px;
+		}
+		.control-buttons {
+			display: flex;
+			gap: 10px;
+			margin-bottom: 15px;
+		}
+		.control-buttons button {
+			flex: 1;
+		}
+		.inline-form {
+			display: flex;
+			gap: 5px;
+			align-items: center;
+		}
+		.status-indicator {
+			position: fixed;
+			top: 10px;
+			right: 10px;
+			background: #fff;
+			border: 1px solid #ddd;
+			padding: 5px 10px;
+			font-size: 12px;
+		}
+	</style>
+}

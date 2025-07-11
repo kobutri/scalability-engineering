@@ -21,6 +21,9 @@ type Server struct {
 
 	// Client management (Docker)
 	dockerClientManager *ClientManager
+
+	// Shared client manager handlers
+	clientManagerHandlers *shared.ClientManagerHandlers
 }
 
 func NewServer(dataPath string) *Server {
@@ -40,10 +43,14 @@ func NewServer(dataPath string) *Server {
 		// Continue without docker client manager
 	}
 
+	// Create shared client manager handlers
+	clientManagerHandlers := shared.NewClientManagerHandlers(clientManager)
+
 	return &Server{
-		clientManager:       clientManager,
-		startTime:           time.Now(),
-		dockerClientManager: dockerClientManager,
+		clientManager:         clientManager,
+		startTime:             time.Now(),
+		dockerClientManager:   dockerClientManager,
+		clientManagerHandlers: clientManagerHandlers,
 	}
 }
 
@@ -51,7 +58,7 @@ func (s *Server) getRandomSubset() []shared.ClientIdentity {
 	return s.clientManager.GetRandomSubset()
 }
 
-func (s *Server) getStatusData() shared.StatusData {
+func (s *Server) getBootstrapData() BootstrapData {
 	uptime := time.Since(s.startTime)
 	allClients := s.clientManager.GetAllClients()
 	queueItems := s.clientManager.GetQueueItems()
@@ -87,27 +94,28 @@ func (s *Server) getStatusData() shared.StatusData {
 		}
 	}
 
-	return shared.StatusData{
-		ServiceType:       "bootstrap",
-		ServiceName:       "Bootstrap Server",
-		ContainerID:       "bootstrap-server",
-		HashSetSize:       s.clientManager.Size(),
-		PriorityQueueSize: len(queueItems),
-		UptimeSeconds:     uptime.Seconds(),
-		UptimeFormatted:   shared.FormatDuration(uptime),
-		CurrentTime:       time.Now().Format("15:04:05"),
-		ClientEntries:     clientEntries,
-		QueueItems:        queueItems,
-		WorkersRunning:    s.clientManager.IsWorkersRunning(),
-		ClientContainers:  clientContainers,
-		Config: shared.ServiceConfig{
-			Timeout:             config.Timeout.String(),
-			MaxAge:              config.MaxAge.String(),
-			MinAge:              config.MinAge.String(),
-			HealthCheckInterval: config.HealthCheckInterval.String(),
-			CleanupInterval:     config.CleanupInterval.String(),
-			SubsetSize:          config.SubsetSize,
+	return BootstrapData{
+		ServiceName:     "Bootstrap Server",
+		ContainerID:     "bootstrap-server",
+		UptimeSeconds:   uptime.Seconds(),
+		UptimeFormatted: shared.FormatDuration(uptime),
+		CurrentTime:     time.Now().Format("15:04:05"),
+		ClientManagerData: shared.ClientManagerData{
+			HashSetSize:       s.clientManager.Size(),
+			PriorityQueueSize: len(queueItems),
+			ClientEntries:     clientEntries,
+			QueueItems:        queueItems,
+			Config: shared.ServiceConfig{
+				Timeout:             config.Timeout.String(),
+				MaxAge:              config.MaxAge.String(),
+				MinAge:              config.MinAge.String(),
+				HealthCheckInterval: config.HealthCheckInterval.String(),
+				CleanupInterval:     config.CleanupInterval.String(),
+				SubsetSize:          config.SubsetSize,
+			},
+			WorkersRunning: s.clientManager.IsWorkersRunning(),
 		},
+		ClientContainers: clientContainers,
 	}
 }
 
@@ -188,208 +196,16 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) statusPageHandler(w http.ResponseWriter, r *http.Request) {
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServicePage(data, uiConfig).Render(r.Context(), w)
+	data := s.getBootstrapData()
+	BootstrapDashboard(data).Render(r.Context(), w)
 }
 
 func (s *Server) statusDataHandler(w http.ResponseWriter, r *http.Request) {
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+	data := s.getBootstrapData()
+	BootstrapContent(data).Render(r.Context(), w)
 }
 
-func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form", http.StatusBadRequest)
-		return
-	}
-
-	config := s.clientManager.GetConfig()
-
-	// Update timeout
-	if timeoutStr := r.FormValue("timeout"); timeoutStr != "" {
-		if timeout, err := time.ParseDuration(timeoutStr); err == nil {
-			config.Timeout = timeout
-		}
-	}
-
-	// Update max age
-	if maxAgeStr := r.FormValue("maxAge"); maxAgeStr != "" {
-		if maxAge, err := time.ParseDuration(maxAgeStr); err == nil {
-			config.MaxAge = maxAge
-		}
-	}
-
-	// Update min age
-	if minAgeStr := r.FormValue("minAge"); minAgeStr != "" {
-		if minAge, err := time.ParseDuration(minAgeStr); err == nil {
-			config.MinAge = minAge
-		}
-	}
-
-	// Update health check interval
-	if healthCheckIntervalStr := r.FormValue("healthCheckInterval"); healthCheckIntervalStr != "" {
-		if healthCheckInterval, err := time.ParseDuration(healthCheckIntervalStr); err == nil {
-			config.HealthCheckInterval = healthCheckInterval
-		}
-	}
-
-	// Update cleanup interval
-	if cleanupIntervalStr := r.FormValue("cleanupInterval"); cleanupIntervalStr != "" {
-		if cleanupInterval, err := time.ParseDuration(cleanupIntervalStr); err == nil {
-			config.CleanupInterval = cleanupInterval
-		}
-	}
-
-	// Update subset size
-	if subsetSizeStr := r.FormValue("subsetSize"); subsetSizeStr != "" {
-		if subsetSize, err := strconv.Atoi(subsetSizeStr); err == nil && subsetSize > 0 {
-			config.SubsetSize = subsetSize
-		}
-	}
-
-	// Apply the updated configuration
-	s.clientManager.UpdateConfig(config)
-
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
-}
-
-func (s *Server) startWorkersHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	s.clientManager.StartWorkers()
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
-}
-
-func (s *Server) stopWorkersHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	s.clientManager.StopWorkers()
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
-}
-
-func (s *Server) addNameHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form", http.StatusBadRequest)
-		return
-	}
-
-	name := r.FormValue("name")
-	id := r.FormValue("id")
-	if name != "" && id != "" {
-		identity := shared.ClientIdentity{
-			Name:        name,
-			ContainerID: id,
-		}
-		s.clientManager.AddClient(identity)
-	}
-
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
-}
-
-func (s *Server) removeNameHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
-
-	var request map[string]string
-	if err := json.Unmarshal(body, &request); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	if id, ok := request["id"]; ok && id != "" {
-		s.clientManager.RemoveClient(id)
-	} else if name, ok := request["name"]; ok && name != "" {
-		// Fallback: remove by name (search through clients)
-		allClients := s.clientManager.GetAllClients()
-		for _, client := range allClients {
-			if client.Name == name {
-				s.clientManager.RemoveClient(client.ContainerID)
-				break
-			}
-		}
-	}
-
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
-}
-
-func (s *Server) clearQueueHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	s.clientManager.Clear()
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
-}
-
-func (s *Server) removeFromQueueHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
-
-	var request map[string]string
-	if err := json.Unmarshal(body, &request); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	if id, ok := request["id"]; ok && id != "" {
-		s.clientManager.RemoveClient(id)
-	}
-
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
-}
-
-// Client management handlers
+// Client management handlers (Docker-specific)
 func (s *Server) addClientHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -418,9 +234,8 @@ func (s *Server) addClientHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+	data := s.getBootstrapData()
+	BootstrapContent(data).Render(r.Context(), w)
 }
 
 func (s *Server) removeClientHandler(w http.ResponseWriter, r *http.Request) {
@@ -459,9 +274,8 @@ func (s *Server) removeClientHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+	data := s.getBootstrapData()
+	BootstrapContent(data).Render(r.Context(), w)
 }
 
 func (s *Server) bulkCreateClientsHandler(w http.ResponseWriter, r *http.Request) {
@@ -499,9 +313,8 @@ func (s *Server) bulkCreateClientsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+	data := s.getBootstrapData()
+	BootstrapContent(data).Render(r.Context(), w)
 }
 
 func (s *Server) removeAllClientsHandler(w http.ResponseWriter, r *http.Request) {
@@ -522,9 +335,8 @@ func (s *Server) removeAllClientsHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	data := s.getStatusData()
-	uiConfig := shared.GetDefaultUIConfig("bootstrap")
-	shared.ServiceContent(data, uiConfig).Render(r.Context(), w)
+	data := s.getBootstrapData()
+	BootstrapContent(data).Render(r.Context(), w)
 }
 
 func getEnvInt(key string, defaultValue int) int {
@@ -581,6 +393,9 @@ func main() {
 	// Start background workers
 	server.clientManager.StartWorkers()
 
+	// Register shared client manager handlers
+	server.clientManagerHandlers.RegisterHandlers()
+
 	// Setup HTTP routes
 	http.HandleFunc("/connect", server.connectHandler)
 	http.HandleFunc("/delete", server.deleteHandler)
@@ -588,15 +403,8 @@ func main() {
 	http.HandleFunc("/status", server.statusHandler)
 	http.HandleFunc("/status-page", server.statusPageHandler)
 	http.HandleFunc("/status-data", server.statusDataHandler)
-	http.HandleFunc("/update-config", server.updateConfigHandler)
-	http.HandleFunc("/start-workers", server.startWorkersHandler)
-	http.HandleFunc("/stop-workers", server.stopWorkersHandler)
-	http.HandleFunc("/add-name", server.addNameHandler)
-	http.HandleFunc("/remove-name", server.removeNameHandler)
-	http.HandleFunc("/clear-queue", server.clearQueueHandler)
-	http.HandleFunc("/remove-from-queue", server.removeFromQueueHandler)
 
-	// Client management endpoints
+	// Docker client management endpoints
 	http.HandleFunc("/add-client", server.addClientHandler)
 	http.HandleFunc("/remove-client", server.removeClientHandler)
 	http.HandleFunc("/bulk-create-clients", server.bulkCreateClientsHandler)

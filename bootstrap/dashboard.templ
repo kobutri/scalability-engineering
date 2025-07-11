@@ -1,0 +1,129 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+	"shared"
+)
+
+const morphSwap = "morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}"
+
+templ BootstrapDashboard(data BootstrapData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Bootstrap Server Control Panel</title>
+			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.5/dist/htmx.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph-ext.js"></script>
+			<script src="https://unpkg.com/htmx-ext-json-enc@2.0.1/json-enc.js"></script>
+			@shared.SharedStyles()
+		</head>
+		<body>
+			<div class="container">
+				<div class="header">
+					<h1>Bootstrap Server Control Panel</h1>
+				</div>
+				<!-- Auto-updating content -->
+				<div id="status-content" hx-get="/status-data" hx-trigger="every 2s" hx-swap={ morphSwap } hx-ext="morph" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+					@BootstrapContent(data)
+				</div>
+			</div>
+		</body>
+	</html>
+}
+
+templ BootstrapContent(data BootstrapData) {
+	<!-- Dynamic header info -->
+	<div style="background: #fff; border: 1px solid #ddd; padding: 6px 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; flex-shrink: 0;">
+		<span>Uptime: { data.UptimeFormatted } | Last Update: { data.CurrentTime }</span>
+		<span style="font-size: 11px;">
+			Workers: 
+			if data.ClientManagerData.WorkersRunning {
+				<span style="color: green;">● ON</span>
+			} else {
+				<span style="color: red;">● OFF</span>
+			}
+		</span>
+	</div>
+	<div class="main-content">
+		<!-- Use the shared client manager component -->
+		@shared.ClientManagerComponent(data.ClientManagerData)
+		
+		@clientManagementSection(data)
+	</div>
+}
+
+templ clientManagementSection(data BootstrapData) {
+	<div class="panel client-management" style="margin-top: 8px;">
+		<h3>Client Container Management ({ fmt.Sprintf("%d", len(data.ClientContainers)) } containers)</h3>
+		<!-- Control buttons -->
+		<div style="margin-bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+			<form hx-post="/add-client" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap } class="inline-form">
+				<input type="text" name="clientName" placeholder="Client name..." required style="width: 150px;"/>
+				<button type="submit" class="btn-success">Add Client</button>
+			</form>
+			<form hx-post="/bulk-create-clients" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap } class="inline-form">
+				<input type="number" name="count" min="1" max="200" value="20" required style="width: 80px;"/>
+				<button type="submit" class="btn-success">Bulk Create</button>
+			</form>
+			<form hx-post="/remove-all-clients" hx-trigger="submit" hx-target="#status-content" hx-swap={ morphSwap } class="inline-form">
+				<button type="submit" class="btn-danger" onclick="return confirm('Are you sure you want to remove all client containers? This action cannot be undone.')">Remove All</button>
+			</form>
+		</div>
+		<!-- Client containers table -->
+		<div class="scrollable">
+			if len(data.ClientContainers) > 0 {
+				<table>
+					<thead>
+						<tr>
+							<th>Container Name</th>
+							<th>Status</th>
+							<th>Web Access</th>
+							<th>Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, container := range data.ClientContainers {
+							<tr>
+								<td>{ container.Name }</td>
+								<td>
+									if strings.Contains(container.Status, "Up") {
+										<span style="color: green;">{ container.Status }</span>
+									} else {
+										<span style="color: red;">{ container.Status }</span>
+									}
+								</td>
+								<td>
+									if container.HostPort != "" && strings.Contains(container.Status, "Up") {
+										<a href={ templ.URL(container.WebURL) } target="_blank" class="btn-primary" style="font-size: 12px; padding: 4px 8px;">
+											Open
+										</a>
+									} else if container.HostPort != "" {
+										<span style="color: #666; font-size: 12px;">Port { container.HostPort } (stopped)</span>
+									} else {
+										<span style="color: #666; font-size: 12px;">No port mapping</span>
+									}
+								</td>
+								<td>
+									<button
+										hx-post="/remove-client"
+										hx-vals={ fmt.Sprintf("{\"containerName\":\"%s\"}", container.Name) }
+										hx-target="#status-content"
+										hx-swap={ morphSwap }
+										hx-ext="json-enc"
+										class="btn-danger"
+									>Remove</button>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			} else {
+				<div class="list-item">No client containers running</div>
+			}
+		</div>
+	</div>
+} 

@@ -1,0 +1,243 @@
+package main
+
+import (
+	"fmt"
+	"shared"
+)
+
+// Client dashboard page
+templ ClientDashboard(data ClientData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Client Control Panel - { data.ServiceName }</title>
+			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.5/dist/htmx.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph-ext.js"></script>
+			@shared.SharedStyles()
+			<style>
+				.stats-row {
+					display: grid;
+					grid-template-columns: repeat(4, 1fr);
+					gap: 10px;
+					margin-bottom: 10px;
+				}
+				.stat-item {
+					background: #fff;
+					border: 1px solid #ddd;
+					padding: 10px;
+					text-align: center;
+				}
+				.stat-value {
+					font-size: 18px;
+					font-weight: bold;
+				}
+				.stat-label {
+					font-size: 12px;
+					color: #666;
+				}
+			</style>
+		</head>
+		<body>
+			<div class="container">
+				<div class="header">
+					<h1>Client Control Panel - { data.ServiceName }</h1>
+				</div>
+				<div id="status-content" hx-get="/status-data" hx-trigger="every 3s" hx-swap="outerHTML" hx-ext="morph">
+					@ClientContent(data)
+				</div>
+			</div>
+		</body>
+	</html>
+}
+
+// Client content that updates dynamically
+templ ClientContent(data ClientData) {
+	<div id="status-content">
+		<!-- Header info -->
+		<div style="background: #fff; border: 1px solid #ddd; padding: 6px 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; flex-shrink: 0;">
+			<span>
+				Bootstrap: { data.BootstrapURL } | Uptime: { data.UptimeFormatted } | Last Update: { data.CurrentTime }
+			</span>
+			<span style="font-size: 11px;">
+				Workers: 
+				if data.ClientManagerData.WorkersRunning {
+					<span style="color: green;">● ON</span>
+				} else {
+					<span style="color: red;">● OFF</span>
+				}
+			</span>
+		</div>
+		<!-- Stats Section -->
+		<div class="stats-row">
+			<div class="stat-item">
+				<div class="stat-label">Connection Status</div>
+				<div class="stat-value">
+					if data.Connected {
+						<span style="color: green;">● Connected</span>
+					} else {
+						<span style="color: red;">● Disconnected</span>
+					}
+				</div>
+			</div>
+			<div class="stat-item">
+				<div class="stat-label">Known Clients</div>
+				<div class="stat-value">{ fmt.Sprintf("%d", data.ClientManagerData.HashSetSize) }</div>
+			</div>
+			<div class="stat-item">
+				<div class="stat-label">Queue Size</div>
+				<div class="stat-value">{ fmt.Sprintf("%d", data.ClientManagerData.PriorityQueueSize) }</div>
+			</div>
+			<div class="stat-item">
+				<div class="stat-label">Uptime</div>
+				<div class="stat-value">{ data.UptimeFormatted }</div>
+			</div>
+		</div>
+		<div class="grid">
+			<!-- Connection Control Panel -->
+			<div class="panel">
+				<h3>Connection Control</h3>
+				<!-- Connection status indicator -->
+				if data.Connected {
+					<div class="connection-status connected">
+						● Connected to { data.BootstrapURL }
+					</div>
+				} else {
+					<div class="connection-status disconnected">
+						● Disconnected from { data.BootstrapURL }
+					</div>
+				}
+				<!-- Error message if any -->
+				if data.ConnectionError != "" {
+					<div class="error-message">
+						{ data.ConnectionError }
+					</div>
+				}
+				<!-- Control buttons -->
+				<div class="control-buttons">
+					if data.Connected {
+						<button hx-post="/disconnect" hx-target="#status-content" hx-swap="outerHTML" class="btn-danger">
+							Disconnect
+						</button>
+						<button hx-post="/refresh" hx-target="#status-content" hx-swap="outerHTML" class="btn-primary">
+							Refresh Names
+						</button>
+					} else {
+						<button hx-post="/connect" hx-target="#status-content" hx-swap="outerHTML" class="btn-success">
+							Connect
+						</button>
+					}
+				</div>
+			</div>
+		</div>
+		<!-- Client Manager Component -->
+		@shared.ClientManagerComponent(data.ClientManagerData)
+	</div>
+}
+
+// Chat dashboard for messaging
+templ chatDashboard(contacts []ContactWithMessage) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Chat Dashboard</title>
+			<style>
+				body {
+					font-family: Arial, sans-serif;
+					margin: 0;
+					padding: 20px;
+					background-color: #f5f5f5;
+				}
+				.container {
+					max-width: 800px;
+					margin: 0 auto;
+					background: white;
+					padding: 20px;
+					border-radius: 8px;
+					box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+				}
+				h1 {
+					color: #333;
+					text-align: center;
+				}
+				.contact-item {
+					border: 1px solid #ddd;
+					padding: 15px;
+					margin: 10px 0;
+					border-radius: 5px;
+					background: #f9f9f9;
+				}
+				.contact-id {
+					font-weight: bold;
+					color: #666;
+				}
+				.last-message {
+					margin: 10px 0;
+					padding: 10px;
+					background: #e8f4f8;
+					border-radius: 3px;
+				}
+				.message-meta {
+					font-size: 0.9em;
+					color: #666;
+				}
+				.send-form {
+					margin-top: 10px;
+				}
+				.send-form input {
+					width: 70%;
+					padding: 8px;
+					margin-right: 10px;
+				}
+				.send-form button {
+					padding: 8px 15px;
+					background-color: #007bff;
+					color: white;
+					border: none;
+					border-radius: 3px;
+					cursor: pointer;
+				}
+				.send-form button:hover {
+					background-color: #0056b3;
+				}
+				.no-contacts {
+					text-align: center;
+					color: #999;
+					padding: 40px;
+				}
+			</style>
+		</head>
+		<body>
+			<div class="container">
+				<h1>Chat Dashboard</h1>
+				if len(contacts) > 0 {
+					for _, contact := range contacts {
+						<div class="contact-item">
+							<div class="contact-id">Container ID: { contact.ContainerID }</div>
+							<div class="last-message">
+								<div><strong>Last Message:</strong> { contact.LastMessage }</div>
+								<div class="message-meta">
+									Time: { contact.LastMessageTime } | Status: { contact.LastMessageStatus }
+								</div>
+							</div>
+							<form class="send-form" action="/send-message" method="POST">
+								<input type="hidden" name="containerID" value={ contact.ContainerID }/>
+								<input type="text" name="message" placeholder="Type your message..." required/>
+								<button type="submit">Send</button>
+							</form>
+						</div>
+					}
+				} else {
+					<div class="no-contacts">
+						<p>No contacts available</p>
+						<p>Connect to the bootstrap server to discover other clients</p>
+					</div>
+				}
+			</div>
+		</body>
+	</html>
+}
