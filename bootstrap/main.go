@@ -74,23 +74,13 @@ func (s *Server) getBootstrapData() BootstrapData {
 	}
 
 	// Get client containers for Docker management
-	var clientContainers []shared.ClientContainer
+	var clientContainers []ClientContainer
 	if s.dockerClientManager != nil {
 		containers, err := s.dockerClientManager.GetClientContainers(context.Background())
 		if err != nil {
 			log.Printf("Failed to get client containers: %v", err)
 		} else {
-			// Convert to shared.ClientContainer
-			clientContainers = make([]shared.ClientContainer, len(containers))
-			for i, container := range containers {
-				clientContainers[i] = shared.ClientContainer{
-					Name:     container.Name,
-					Status:   container.Status,
-					ID:       container.CreatedAt, // Use CreatedAt as ID since ID field doesn't exist
-					HostPort: container.HostPort,
-					WebURL:   container.WebURL,
-				}
-			}
+			clientContainers = containers
 		}
 	}
 
@@ -183,26 +173,48 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
-	stats := s.clientManager.GetStats()
-	status := map[string]interface{}{
-		"hashmap_size":        stats.HashMapSize,
-		"priority_queue_size": stats.PriorityQueueSize,
-		"uptime_seconds":      stats.UptimeSeconds,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
-}
-
 func (s *Server) statusPageHandler(w http.ResponseWriter, r *http.Request) {
 	data := s.getBootstrapData()
 	BootstrapDashboard(data).Render(r.Context(), w)
 }
 
-func (s *Server) statusDataHandler(w http.ResponseWriter, r *http.Request) {
-	data := s.getBootstrapData()
-	BootstrapContent(data).Render(r.Context(), w)
+func (s *Server) headerStatusHandler(w http.ResponseWriter, r *http.Request) {
+	uptime := time.Since(s.startTime)
+
+	headerData := shared.HeaderData{
+		ServiceName:     "Bootstrap Server",
+		ContainerID:     "bootstrap-server",
+		UptimeFormatted: shared.FormatDuration(uptime),
+		CurrentTime:     time.Now().Format("15:04:05"),
+		WorkersRunning:  s.clientManager.IsWorkersRunning(),
+	}
+
+	shared.HeaderComponent(headerData).Render(r.Context(), w)
+}
+
+func (s *Server) clientContainersHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get client containers for Docker management
+	var clientContainers []ClientContainer
+	if s.dockerClientManager != nil {
+		containers, err := s.dockerClientManager.GetClientContainers(context.Background())
+		if err != nil {
+			log.Printf("Failed to get client containers: %v", err)
+		} else {
+			clientContainers = containers
+		}
+	}
+
+	// Return the client management section component
+	data := BootstrapData{
+		ClientContainers: clientContainers,
+	}
+
+	clientManagementSection(data).Render(r.Context(), w)
 }
 
 // Client management handlers (Docker-specific)
@@ -400,9 +412,9 @@ func main() {
 	http.HandleFunc("/connect", server.connectHandler)
 	http.HandleFunc("/delete", server.deleteHandler)
 	http.HandleFunc("/", server.healthHandler)
-	http.HandleFunc("/status", server.statusHandler)
 	http.HandleFunc("/status-page", server.statusPageHandler)
-	http.HandleFunc("/status-data", server.statusDataHandler)
+	http.HandleFunc("/header-status", server.headerStatusHandler)
+	http.HandleFunc("/client-containers", server.clientContainersHandler)
 
 	// Docker client management endpoints
 	http.HandleFunc("/add-client", server.addClientHandler)

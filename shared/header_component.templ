@@ -1,0 +1,32 @@
+package shared
+
+// HeaderData represents the data structure for header information
+type HeaderData struct {
+	ServiceName     string `json:"service_name"`
+	ContainerID     string `json:"container_id"`
+	UptimeFormatted string `json:"uptime_formatted"`
+	CurrentTime     string `json:"current_time"`
+	BootstrapURL    string `json:"bootstrap_url,omitempty"`
+	WorkersRunning  bool   `json:"workers_running"`
+}
+
+// HeaderComponent renders the header with auto-refresh
+templ HeaderComponent(data HeaderData) {
+	<div id="header-info" hx-get="/header-status" hx-trigger="every 3s" hx-swap="outerHTML" style="background: #fff; border: 1px solid #ddd; padding: 6px 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; flex-shrink: 0;">
+		<span>
+			{ data.ServiceName }
+			if data.BootstrapURL != "" {
+				| Bootstrap: { data.BootstrapURL }
+			}
+			| Uptime: { data.UptimeFormatted } | Last Update: { data.CurrentTime }
+		</span>
+		<span style="font-size: 11px;">
+			Workers: 
+			if data.WorkersRunning {
+				<span style="color: green;">● ON</span>
+			} else {
+				<span style="color: red;">● OFF</span>
+			}
+		</span>
+	</div>
+} 

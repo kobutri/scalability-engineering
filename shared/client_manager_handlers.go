@@ -98,8 +98,8 @@ func (h *ClientManagerHandlers) updateConfigHandler(w http.ResponseWriter, r *ht
 	// Update configuration
 	h.clientManager.UpdateConfig(config)
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Configuration updated"))
+	// Return the updated client manager component
+	h.renderClientManagerComponent(w, r)
 }
 
 // startWorkersHandler starts background workers
@@ -110,8 +110,9 @@ func (h *ClientManagerHandlers) startWorkersHandler(w http.ResponseWriter, r *ht
 	}
 
 	h.clientManager.StartWorkers()
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Workers started"))
+
+	// Return the updated client manager component
+	h.renderClientManagerComponent(w, r)
 }
 
 // stopWorkersHandler stops background workers
@@ -122,8 +123,9 @@ func (h *ClientManagerHandlers) stopWorkersHandler(w http.ResponseWriter, r *htt
 	}
 
 	h.clientManager.StopWorkers()
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Workers stopped"))
+
+	// Return the updated client manager component
+	h.renderClientManagerComponent(w, r)
 }
 
 // addClientHandler manually adds a client
@@ -152,8 +154,9 @@ func (h *ClientManagerHandlers) addClientHandler(w http.ResponseWriter, r *http.
 	}
 
 	h.clientManager.AddClient(identity)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Client added"))
+
+	// Return the updated client manager component
+	h.renderClientManagerComponent(w, r)
 }
 
 // removeClientHandler removes a client
@@ -183,8 +186,9 @@ func (h *ClientManagerHandlers) removeClientHandler(w http.ResponseWriter, r *ht
 	}
 
 	h.clientManager.RemoveClient(id)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Client removed"))
+
+	// Return the updated client manager component
+	h.renderClientManagerComponent(w, r)
 }
 
 // clearQueueHandler clears the priority queue
@@ -196,8 +200,9 @@ func (h *ClientManagerHandlers) clearQueueHandler(w http.ResponseWriter, r *http
 
 	// Clear both the hashmap and priority queue
 	h.clientManager.Clear()
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Queue cleared"))
+
+	// Return the updated client manager component
+	h.renderClientManagerComponent(w, r)
 }
 
 // removeFromQueueHandler removes an item from the priority queue
@@ -228,18 +233,56 @@ func (h *ClientManagerHandlers) removeFromQueueHandler(w http.ResponseWriter, r 
 
 	// Remove the client entirely (from both hashmap and priority queue)
 	h.clientManager.RemoveClient(id)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Item removed from queue"))
+
+	// Return the updated client manager component
+	h.renderClientManagerComponent(w, r)
+}
+
+// renderClientManagerComponent renders the client manager component with current data
+func (h *ClientManagerHandlers) renderClientManagerComponent(w http.ResponseWriter, r *http.Request) {
+	// Get fresh data from client manager
+	allClients := h.clientManager.GetAllClients()
+	queueItems := h.clientManager.GetQueueItems()
+	config := h.clientManager.GetConfig()
+
+	// Convert client identities to entries format
+	clientEntries := make([]Entry[string, string], len(allClients))
+	for i, client := range allClients {
+		clientEntries[i] = Entry[string, string]{
+			Key:   client.ContainerID,
+			Value: client.Name,
+		}
+	}
+
+	// Create ClientManagerData
+	data := ClientManagerData{
+		HashSetSize:       h.clientManager.Size(),
+		PriorityQueueSize: len(queueItems),
+		ClientEntries:     clientEntries,
+		QueueItems:        queueItems,
+		Config: ServiceConfig{
+			Timeout:             config.Timeout.String(),
+			MaxAge:              config.MaxAge.String(),
+			MinAge:              config.MinAge.String(),
+			HealthCheckInterval: config.HealthCheckInterval.String(),
+			CleanupInterval:     config.CleanupInterval.String(),
+			SubsetSize:          config.SubsetSize,
+		},
+		WorkersRunning: h.clientManager.IsWorkersRunning(),
+	}
+
+	// Return the client manager component
+	ClientManagerComponent(data).Render(r.Context(), w)
 }
 
 // refreshHandler handles manual refresh requests
 func (h *ClientManagerHandlers) refreshHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	// Support both GET and POST for polling
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Simply return success - the UI will auto-refresh anyway
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Data refreshed"))
+	// Use the shared rendering function
+	h.renderClientManagerComponent(w, r)
 }

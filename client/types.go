@@ -4,19 +4,21 @@ import (
 	"shared"
 )
 
-// ClientData contains all data needed for the client service
+// ClientData contains static data needed for the client service dashboard
+// Dynamic data like header info, client manager data, and connection status
+// are now handled by separate polling endpoints
 type ClientData struct {
-	// Service identification
+	// Service identification (used for initial header and static elements)
 	ServiceName     string
 	ContainerID     string
 	UptimeSeconds   float64
 	UptimeFormatted string
 	CurrentTime     string
 
-	// Client manager component data
+	// Static client manager data for initial load
 	ClientManagerData shared.ClientManagerData
 
-	// Client-specific data
+	// Static connection data for initial load
 	BootstrapURL    string
 	Connected       bool
 	ConnectionError string

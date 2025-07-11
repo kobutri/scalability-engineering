@@ -347,9 +347,35 @@ func (c *Client) statusHandler(w http.ResponseWriter, r *http.Request) {
 	ClientDashboard(data).Render(r.Context(), w)
 }
 
-func (c *Client) statusDataHandler(w http.ResponseWriter, r *http.Request) {
-	data := c.getClientData()
-	ClientContent(data).Render(r.Context(), w)
+func (c *Client) headerStatusHandler(w http.ResponseWriter, r *http.Request) {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	uptime := time.Since(c.startTime)
+
+	headerData := shared.HeaderData{
+		ServiceName:     c.identity.Name,
+		ContainerID:     c.identity.ContainerID,
+		UptimeFormatted: shared.FormatDuration(uptime),
+		CurrentTime:     time.Now().Format("15:04:05"),
+		BootstrapURL:    c.bootstrapURL,
+		WorkersRunning:  c.clientManager.IsWorkersRunning(),
+	}
+
+	shared.HeaderComponent(headerData).Render(r.Context(), w)
+}
+
+func (c *Client) connectionStatusHandler(w http.ResponseWriter, r *http.Request) {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	connectionData := ConnectionControlData{
+		Connected:       c.connected,
+		BootstrapURL:    c.bootstrapURL,
+		ConnectionError: c.connectionError,
+	}
+
+	ConnectionControlComponent(connectionData).Render(r.Context(), w)
 }
 
 func (c *Client) aliveHandler(w http.ResponseWriter, r *http.Request) {
@@ -652,7 +678,8 @@ func main() {
 	client.clientManagerHandlers.RegisterHandlers()
 
 	// Register HTTP handlers
-	http.HandleFunc("/status-data", client.statusDataHandler)
+	http.HandleFunc("/header-status", client.headerStatusHandler)
+	http.HandleFunc("/connection-status", client.connectionStatusHandler)
 	http.HandleFunc("/connect", client.connectHandler)
 	http.HandleFunc("/disconnect", client.disconnectHandler)
 	http.HandleFunc("/refresh", client.refreshHandler)

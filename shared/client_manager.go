@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+// PriorityQueueAddCallback is called when an element is added to the priority queue
+type PriorityQueueAddCallback func(containerID string, priority int64)
+
+// PriorityQueueRemoveCallback is called when an element is removed from the priority queue
+type PriorityQueueRemoveCallback func(containerID string, priority int64)
+
 // ClientIdentity represents a client in the system
 type ClientIdentity struct {
 	Name        string `json:"name"`
@@ -18,13 +24,15 @@ type ClientIdentity struct {
 
 // ClientManagerConfig holds configuration for the client manager
 type ClientManagerConfig struct {
-	Timeout             time.Duration
-	MaxAge              time.Duration
-	MinAge              time.Duration
-	HealthCheckInterval time.Duration
-	CleanupInterval     time.Duration
-	SubsetSize          int
-	PersistenceConfig   PersistenceConfig
+	Timeout                     time.Duration
+	MaxAge                      time.Duration
+	MinAge                      time.Duration
+	HealthCheckInterval         time.Duration
+	CleanupInterval             time.Duration
+	SubsetSize                  int
+	PersistenceConfig           PersistenceConfig
+	PriorityQueueAddCallback    PriorityQueueAddCallback    // Optional callback for priority queue add operations
+	PriorityQueueRemoveCallback PriorityQueueRemoveCallback // Optional callback for priority queue remove operations
 }
 
 // DefaultClientManagerConfig returns a default configuration
@@ -46,10 +54,12 @@ func DefaultClientManagerConfig() ClientManagerConfig {
 
 // ClientManager manages client identities with health checks and persistence
 type ClientManager struct {
-	hashMap       *HashMap[string, string]      // container ID -> client name
-	priorityQueue *PriorityQueue[int64, string] // timestamp -> container ID
-	startTime     time.Time
-	config        ClientManagerConfig
+	hashMap                     *HashMap[string, string]      // container ID -> client name
+	priorityQueue               *PriorityQueue[int64, string] // timestamp -> container ID
+	startTime                   time.Time
+	config                      ClientManagerConfig
+	priorityQueueAddCallback    PriorityQueueAddCallback    // Optional callback for priority queue add operations
+	priorityQueueRemoveCallback PriorityQueueRemoveCallback // Optional callback for priority queue remove operations
 
 	// Worker control
 	workersRunning bool
@@ -75,11 +85,13 @@ func NewClientManager(config ClientManagerConfig) *ClientManager {
 	}
 
 	return &ClientManager{
-		hashMap:       hashMap,
-		priorityQueue: NewPriorityQueue[int64, string](),
-		startTime:     time.Now(),
-		config:        config,
-		stopWorkers:   make(chan struct{}),
+		hashMap:                     hashMap,
+		priorityQueue:               NewPriorityQueue[int64, string](),
+		startTime:                   time.Now(),
+		config:                      config,
+		priorityQueueAddCallback:    config.PriorityQueueAddCallback,
+		priorityQueueRemoveCallback: config.PriorityQueueRemoveCallback,
+		stopWorkers:                 make(chan struct{}),
 	}
 }
 
@@ -114,6 +126,25 @@ func (cm *ClientManager) StopWorkers() {
 	cm.workerWG.Wait()
 }
 
+// getCurrentTimestamp returns the current timestamp in microseconds since start
+func (cm *ClientManager) getCurrentTimestamp() int64 {
+	return time.Since(cm.startTime).Microseconds()
+}
+
+// callPriorityQueueAddCallback safely calls the priority queue add callback if it's set
+func (cm *ClientManager) callPriorityQueueAddCallback(containerID string, priority int64) {
+	if cm.priorityQueueAddCallback != nil {
+		cm.priorityQueueAddCallback(containerID, priority)
+	}
+}
+
+// callPriorityQueueRemoveCallback safely calls the priority queue remove callback if it's set
+func (cm *ClientManager) callPriorityQueueRemoveCallback(containerID string, priority int64) {
+	if cm.priorityQueueRemoveCallback != nil {
+		cm.priorityQueueRemoveCallback(containerID, priority)
+	}
+}
+
 // AddClient adds a client to the manager
 func (cm *ClientManager) AddClient(identity ClientIdentity) {
 	if identity.ContainerID == "" || identity.Name == "" {
@@ -126,6 +157,9 @@ func (cm *ClientManager) AddClient(identity ClientIdentity) {
 	// Add to priority queue with current timestamp
 	timestamp := cm.getCurrentTimestamp()
 	cm.priorityQueue.Insert(timestamp, identity.ContainerID)
+
+	// Call callback for priority queue operation
+	cm.callPriorityQueueAddCallback(identity.ContainerID, timestamp)
 }
 
 // RemoveClient removes a client from the manager
@@ -134,9 +168,19 @@ func (cm *ClientManager) RemoveClient(containerID string) bool {
 	if _, existed := cm.hashMap.Remove(containerID); existed {
 		removed = true
 	}
+
+	// Get priority before removing to pass to callback
+	var priority int64
+	if p, exists := cm.priorityQueue.GetPriority(containerID); exists {
+		priority = p
+	}
+
 	if cm.priorityQueue.Remove(containerID) {
 		removed = true
+		// Call callback for priority queue operation
+		cm.callPriorityQueueRemoveCallback(containerID, priority)
 	}
+
 	return removed
 }
 
@@ -213,6 +257,8 @@ func (cm *ClientManager) UpdateConfig(newConfig ClientManagerConfig) {
 	}
 
 	cm.config = newConfig
+	cm.priorityQueueAddCallback = newConfig.PriorityQueueAddCallback
+	cm.priorityQueueRemoveCallback = newConfig.PriorityQueueRemoveCallback
 
 	if restartWorkers && cm.workersRunning {
 		// Restart workers with new intervals
@@ -243,11 +289,6 @@ func (cm *ClientManager) IsWorkersRunning() bool {
 func (cm *ClientManager) Close() error {
 	cm.StopWorkers()
 	return cm.hashMap.Close()
-}
-
-// getCurrentTimestamp returns the current timestamp in microseconds since start
-func (cm *ClientManager) getCurrentTimestamp() int64 {
-	return time.Since(cm.startTime).Microseconds()
 }
 
 // healthCheckWorker runs periodic health checks on clients
@@ -288,7 +329,9 @@ func (cm *ClientManager) healthCheckWorker() {
 
 						// If older than maxAge, remove it
 						if age > maxAgeMicros {
-							cm.priorityQueue.Remove(containerID)
+							if cm.priorityQueue.Remove(containerID) {
+								cm.callPriorityQueueRemoveCallback(containerID, priority)
+							}
 							return
 						}
 
@@ -304,9 +347,18 @@ func (cm *ClientManager) healthCheckWorker() {
 					// Add to priority queue with current timestamp
 					timestamp := cm.getCurrentTimestamp()
 					cm.priorityQueue.Insert(timestamp, containerID)
+					cm.callPriorityQueueAddCallback(containerID, timestamp)
 				} else {
+					// Get priority before removing to pass to callback
+					var priority int64
+					if p, exists := cm.priorityQueue.GetPriority(containerID); exists {
+						priority = p
+					}
+
 					// Remove from both structures
-					cm.priorityQueue.Remove(containerID)
+					if cm.priorityQueue.Remove(containerID) {
+						cm.callPriorityQueueRemoveCallback(containerID, priority)
+					}
 					cm.hashMap.Remove(containerID)
 				}
 			}(containerID)
@@ -343,7 +395,12 @@ func (cm *ClientManager) cleanupWorker() {
 				if !ok || priority >= cutoffTime {
 					break
 				}
-				cm.priorityQueue.ExtractMin()
+
+				// Extract the minimum and call callback
+				extractedPriority, extractedContainerID, ok := cm.priorityQueue.ExtractMin()
+				if ok {
+					cm.callPriorityQueueRemoveCallback(extractedContainerID, extractedPriority)
+				}
 			}
 		}
 	}

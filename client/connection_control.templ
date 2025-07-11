@@ -1,0 +1,46 @@
+package main
+
+// ConnectionControlData represents the data needed for the connection control panel
+type ConnectionControlData struct {
+	Connected       bool   `json:"connected"`
+	BootstrapURL    string `json:"bootstrap_url"`
+	ConnectionError string `json:"connection_error"`
+}
+
+// ConnectionControlComponent renders the connection control panel with auto-refresh
+templ ConnectionControlComponent(data ConnectionControlData) {
+	<div id="connection-control-panel" hx-get="/connection-status" hx-trigger="every 3s" hx-swap="outerHTML" class="panel">
+		<h3>Connection Control</h3>
+		<!-- Connection status indicator -->
+		if data.Connected {
+			<div class="connection-status connected">
+				● Connected to { data.BootstrapURL }
+			</div>
+		} else {
+			<div class="connection-status disconnected">
+				● Disconnected from { data.BootstrapURL }
+			</div>
+		}
+		<!-- Error message if any -->
+		if data.ConnectionError != "" {
+			<div class="error-message">
+				{ data.ConnectionError }
+			</div>
+		}
+		<!-- Control buttons -->
+		<div class="control-buttons">
+			if data.Connected {
+				<button hx-post="/disconnect" hx-target="#status-content" hx-swap="outerHTML" class="btn-danger">
+					Disconnect
+				</button>
+				<button hx-post="/refresh" hx-target="#status-content" hx-swap="outerHTML" class="btn-primary">
+					Refresh Names
+				</button>
+			} else {
+				<button hx-post="/connect" hx-target="#status-content" hx-swap="outerHTML" class="btn-success">
+					Connect
+				</button>
+			}
+		</div>
+	</div>
+} 

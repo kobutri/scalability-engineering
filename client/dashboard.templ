@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"shared"
 )
 
@@ -17,35 +16,22 @@ templ ClientDashboard(data ClientData) {
 			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph.js"></script>
 			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph-ext.js"></script>
 			@shared.SharedStyles()
-			<style>
-				.stats-row {
-					display: grid;
-					grid-template-columns: repeat(4, 1fr);
-					gap: 10px;
-					margin-bottom: 10px;
-				}
-				.stat-item {
-					background: #fff;
-					border: 1px solid #ddd;
-					padding: 10px;
-					text-align: center;
-				}
-				.stat-value {
-					font-size: 18px;
-					font-weight: bold;
-				}
-				.stat-label {
-					font-size: 12px;
-					color: #666;
-				}
-			</style>
 		</head>
 		<body>
 			<div class="container">
 				<div class="header">
 					<h1>Client Control Panel - { data.ServiceName }</h1>
 				</div>
-				<div id="status-content" hx-get="/status-data" hx-trigger="every 3s" hx-swap="outerHTML" hx-ext="morph">
+				<!-- Auto-updating header -->
+				@shared.HeaderComponent(shared.HeaderData{
+					ServiceName:     data.ServiceName,
+					ContainerID:     data.ContainerID,
+					UptimeFormatted: data.UptimeFormatted,
+					CurrentTime:     data.CurrentTime,
+					BootstrapURL:    data.BootstrapURL,
+					WorkersRunning:  data.ClientManagerData.WorkersRunning,
+				})
+				<div id="status-content">
 					@ClientContent(data)
 				</div>
 			</div>
@@ -56,81 +42,13 @@ templ ClientDashboard(data ClientData) {
 // Client content that updates dynamically
 templ ClientContent(data ClientData) {
 	<div id="status-content">
-		<!-- Header info -->
-		<div style="background: #fff; border: 1px solid #ddd; padding: 6px 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; flex-shrink: 0;">
-			<span>
-				Bootstrap: { data.BootstrapURL } | Uptime: { data.UptimeFormatted } | Last Update: { data.CurrentTime }
-			</span>
-			<span style="font-size: 11px;">
-				Workers: 
-				if data.ClientManagerData.WorkersRunning {
-					<span style="color: green;">● ON</span>
-				} else {
-					<span style="color: red;">● OFF</span>
-				}
-			</span>
-		</div>
-		<!-- Stats Section -->
-		<div class="stats-row">
-			<div class="stat-item">
-				<div class="stat-label">Connection Status</div>
-				<div class="stat-value">
-					if data.Connected {
-						<span style="color: green;">● Connected</span>
-					} else {
-						<span style="color: red;">● Disconnected</span>
-					}
-				</div>
-			</div>
-			<div class="stat-item">
-				<div class="stat-label">Known Clients</div>
-				<div class="stat-value">{ fmt.Sprintf("%d", data.ClientManagerData.HashSetSize) }</div>
-			</div>
-			<div class="stat-item">
-				<div class="stat-label">Queue Size</div>
-				<div class="stat-value">{ fmt.Sprintf("%d", data.ClientManagerData.PriorityQueueSize) }</div>
-			</div>
-			<div class="stat-item">
-				<div class="stat-label">Uptime</div>
-				<div class="stat-value">{ data.UptimeFormatted }</div>
-			</div>
-		</div>
 		<div class="grid">
 			<!-- Connection Control Panel -->
-			<div class="panel">
-				<h3>Connection Control</h3>
-				<!-- Connection status indicator -->
-				if data.Connected {
-					<div class="connection-status connected">
-						● Connected to { data.BootstrapURL }
-					</div>
-				} else {
-					<div class="connection-status disconnected">
-						● Disconnected from { data.BootstrapURL }
-					</div>
-				}
-				<!-- Error message if any -->
-				if data.ConnectionError != "" {
-					<div class="error-message">
-						{ data.ConnectionError }
-					</div>
-				}
-				<!-- Control buttons -->
-				<div class="control-buttons">
-					if data.Connected {
-						<button hx-post="/disconnect" hx-target="#status-content" hx-swap="outerHTML" class="btn-danger">
-							Disconnect
-						</button>
-						<button hx-post="/refresh" hx-target="#status-content" hx-swap="outerHTML" class="btn-primary">
-							Refresh Names
-						</button>
-					} else {
-						<button hx-post="/connect" hx-target="#status-content" hx-swap="outerHTML" class="btn-success">
-							Connect
-						</button>
-					}
-				</div>
-			</div>
+			@ConnectionControlComponent(ConnectionControlData{
+				Connected:       data.Connected,
+				BootstrapURL:    data.BootstrapURL,
+				ConnectionError: data.ConnectionError,
+			})
 		</div>
 		<!-- Client Manager Component -->
 		@shared.ClientManagerComponent(data.ClientManagerData)

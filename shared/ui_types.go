@@ -15,15 +15,6 @@ type ServiceConfig struct {
 	SubsetSize          int
 }
 
-// ClientContainer represents a Docker container for display
-type ClientContainer struct {
-	Name     string
-	Status   string
-	ID       string
-	HostPort string
-	WebURL   string
-}
-
 // FormatDuration formats a duration for display in the UI
 func FormatDuration(duration time.Duration) string {
 	if duration.Hours() >= 24 {

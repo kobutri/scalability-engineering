@@ -4,11 +4,13 @@ import "fmt"
 
 // ClientManagerComponent renders the shared client manager component
 templ ClientManagerComponent(data ClientManagerData) {
+	<div id="client-manager-component" hx-get="/client-manager/refresh" hx-trigger="every 5s" hx-swap="outerHTML">
 		@statsSection(data)
 		<div class="data-grid">
 			@controlSection(data)
 			@dataSection(data)
 		</div>
+	</div>
 }
 
 templ statsSection(data ClientManagerData) {
@@ -45,6 +47,16 @@ templ statsSection(data ClientManagerData) {
 			<div class="stat-value">{ data.Config.CleanupInterval }</div>
 			<div class="stat-label">Cleanup Interval</div>
 		</div>
+		<div class="stat">
+			<div class="stat-value">
+				if data.WorkersRunning {
+					<span style="color: green;">● ON</span>
+				} else {
+					<span style="color: red;">● OFF</span>
+				}
+			</div>
+			<div class="stat-label">Workers</div>
+		</div>
 	</div>
 }
 
@@ -53,7 +65,7 @@ templ controlSection(data ClientManagerData) {
 		<h3>Configuration</h3>
 		<!-- Smart updating form -->
 		<div class="scrollable">
-			<form id="config-form" hx-post="/client-manager/update-config" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}">
+			<form id="config-form" hx-post="/client-manager/update-config" hx-trigger="submit" hx-target="#client-manager-component" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}">
 				<div class="form-group">
 					<label>Health Check Timeout:</label>
 					<input
@@ -121,9 +133,9 @@ templ controlSection(data ClientManagerData) {
 		<div class="form-group">
 			<label>Background Workers:</label>
 			if data.WorkersRunning {
-				<button hx-post="/client-manager/stop-workers" hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" class="btn-danger">Stop Workers</button>
+				<button hx-post="/client-manager/stop-workers" hx-target="#client-manager-component" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" class="btn-danger">Stop Workers</button>
 			} else {
-				<button hx-post="/client-manager/start-workers" hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" class="btn-success">Start Workers</button>
+				<button hx-post="/client-manager/start-workers" hx-target="#client-manager-component" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" class="btn-success">Start Workers</button>
 			}
 		</div>
 	</div>
@@ -132,7 +144,7 @@ templ controlSection(data ClientManagerData) {
 templ dataSection(data ClientManagerData) {
 	<div class="panel">
 		<h3>Connected Clients ({ fmt.Sprintf("%d", len(data.ClientEntries)) } clients)</h3>
-		<form hx-post="/client-manager/add-client" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" class="inline-form">
+		<form hx-post="/client-manager/add-client" hx-trigger="submit" hx-target="#client-manager-component" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" class="inline-form">
 			<input type="text" name="id" placeholder="Client ID..." required style="width: 120px;"/>
 			<input type="text" name="name" placeholder="Client name..." required style="width: 120px;"/>
 			<button type="submit">Add Client</button>
@@ -153,7 +165,7 @@ templ dataSection(data ClientManagerData) {
 								<td>{ entry.Key }</td>
 								<td>{ entry.Value }</td>
 								<td>
-									<button hx-post="/client-manager/remove-client" hx-vals={ fmt.Sprintf("{\"id\":\"%s\"}", entry.Key) } hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" hx-ext="json-enc" class="btn-danger">Remove</button>
+									<button hx-post="/client-manager/remove-client" hx-vals={ fmt.Sprintf("{\"id\":\"%s\"}", entry.Key) } hx-target="#client-manager-component" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" hx-ext="json-enc" class="btn-danger">Remove</button>
 								</td>
 							</tr>
 						}
@@ -166,7 +178,7 @@ templ dataSection(data ClientManagerData) {
 	</div>
 	<div class="panel">
 		<h3>Priority Queue ({ fmt.Sprintf("%d", len(data.QueueItems)) } items)</h3>
-		<form hx-post="/client-manager/clear-queue" hx-trigger="submit" hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}">
+		<form hx-post="/client-manager/clear-queue" hx-trigger="submit" hx-target="#client-manager-component" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}">
 			<button type="submit" class="btn-danger">Clear Queue</button>
 		</form>
 		<div class="scrollable">
@@ -189,7 +201,7 @@ templ dataSection(data ClientManagerData) {
 								<td>{ item.Age }</td>
 								<td>{ item.Timestamp }</td>
 								<td>
-									<button hx-post="/client-manager/remove-from-queue" hx-vals={ fmt.Sprintf("{\"id\":\"%s\"}", item.ID) } hx-target="#status-content" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" hx-ext="json-enc" class="btn-danger">Remove</button>
+									<button hx-post="/client-manager/remove-from-queue" hx-vals={ fmt.Sprintf("{\"id\":\"%s\"}", item.ID) } hx-target="#client-manager-component" hx-swap="morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}" hx-ext="json-enc" class="btn-danger">Remove</button>
 								</td>
 							</tr>
 						}
@@ -291,7 +303,7 @@ templ SharedStyles() {
 		}
 		.stats {
 			display: grid;
-			grid-template-columns: repeat(8, 1fr);
+			grid-template-columns: repeat(9, 1fr);
 			gap: 8px;
 			margin-bottom: 8px;
 			max-height: 120px;

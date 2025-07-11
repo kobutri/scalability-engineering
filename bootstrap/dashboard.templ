@@ -26,8 +26,16 @@ templ BootstrapDashboard(data BootstrapData) {
 				<div class="header">
 					<h1>Bootstrap Server Control Panel</h1>
 				</div>
-				<!-- Auto-updating content -->
-				<div id="status-content" hx-get="/status-data" hx-trigger="every 2s" hx-swap={ morphSwap } hx-ext="morph" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+				<!-- Auto-updating header -->
+				@shared.HeaderComponent(shared.HeaderData{
+					ServiceName:     data.ServiceName,
+					ContainerID:     data.ContainerID,
+					UptimeFormatted: data.UptimeFormatted,
+					CurrentTime:     data.CurrentTime,
+					WorkersRunning:  data.ClientManagerData.WorkersRunning,
+				})
+				<!-- Static content -->
+				<div id="status-content" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
 					@BootstrapContent(data)
 				</div>
 			</div>
@@ -36,18 +44,6 @@ templ BootstrapDashboard(data BootstrapData) {
 }
 
 templ BootstrapContent(data BootstrapData) {
-	<!-- Dynamic header info -->
-	<div style="background: #fff; border: 1px solid #ddd; padding: 6px 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; flex-shrink: 0;">
-		<span>Uptime: { data.UptimeFormatted } | Last Update: { data.CurrentTime }</span>
-		<span style="font-size: 11px;">
-			Workers: 
-			if data.ClientManagerData.WorkersRunning {
-				<span style="color: green;">● ON</span>
-			} else {
-				<span style="color: red;">● OFF</span>
-			}
-		</span>
-	</div>
 	<div class="main-content">
 		<!-- Use the shared client manager component -->
 		@shared.ClientManagerComponent(data.ClientManagerData)
@@ -57,7 +53,7 @@ templ BootstrapContent(data BootstrapData) {
 }
 
 templ clientManagementSection(data BootstrapData) {
-	<div class="panel client-management" style="margin-top: 8px;">
+	<div id="client-management-section" hx-get="/client-containers" hx-trigger="every 5s" hx-swap="outerHTML" class="panel client-management" style="margin-top: 8px;">
 		<h3>Client Container Management ({ fmt.Sprintf("%d", len(data.ClientContainers)) } containers)</h3>
 		<!-- Control buttons -->
 		<div style="margin-bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
