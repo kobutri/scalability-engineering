@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -488,6 +489,10 @@ func (c *Client) chatVerlaufHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, cm := range contactMessages {
+		log.Printf("Contact: %s, Messages: %d", cm.Contact, len(cm.Messages))
+	}
+
 	// Filter messages for selected contact
 	var messages []Message
 	for _, cm := range contactMessages {
@@ -556,6 +561,18 @@ func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	log.Printf("Message sent with status: %s", resp.Status)
+
+	contactMessages, err := c.GetAllContactMessages()
+	var messages []Message
+	for _, cm := range contactMessages {
+		if cm.Contact == targetContainerName {
+			messages = cm.Messages
+			break
+		}
+	}
+
+	chatVerlauf(contactMessages, c.identity, targetContainerName, messages).Render(r.Context(), w)
+
 }
 
 type ContactMessages struct {
@@ -564,6 +581,7 @@ type ContactMessages struct {
 }
 
 // Gibt für jeden Kontakt alle zugehörigen Nachrichten zurück
+// Gibt für jeden Kontakt alle zugehörigen Nachrichten zurück, sortiert nach Timestamp und Contact
 func (c *Client) GetAllContactMessages() ([]ContactMessages, error) {
 	var result []ContactMessages
 
@@ -578,6 +596,40 @@ func (c *Client) GetAllContactMessages() ([]ContactMessages, error) {
 			Messages: messages,
 		})
 	}
+
+	// Sortiere die Kontakte und ihre Nachrichten
+	sort.Slice(result, func(i, j int) bool {
+		// Fall 1: Beide Kontakte haben Nachrichten
+		if len(result[i].Messages) > 0 && len(result[j].Messages) > 0 {
+			// Vergleiche die neueste Nachricht jedes Kontakts
+			latestI := result[i].Messages[len(result[i].Messages)-1].Timestamp
+			latestJ := result[j].Messages[len(result[j].Messages)-1].Timestamp
+
+			if latestI != latestJ {
+				return latestI > latestJ // neueste zuerst
+			}
+			return result[i].Contact < result[j].Contact // bei gleichem Timestamp alphabetisch
+		}
+
+		// Fall 2: Nur einer hat Nachrichten - dieser kommt zuerst
+		if len(result[i].Messages) > 0 {
+			return true
+		}
+		if len(result[j].Messages) > 0 {
+			return false
+		}
+
+		// Fall 3: Keine Nachrichten - sortiere alphabetisch
+		return result[i].Contact < result[j].Contact
+	})
+
+	// Sortiere die Nachrichten jedes Kontakts chronologisch (älteste zuerst)
+	for _, cm := range result {
+		sort.Slice(cm.Messages, func(i, j int) bool {
+			return cm.Messages[i].Timestamp < cm.Messages[j].Timestamp
+		})
+	}
+
 	return result, nil
 }
 

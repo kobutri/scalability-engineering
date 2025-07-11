@@ -71,10 +71,12 @@ func GetChatWithContact(myName, contactName string) ([]Message, error) {
 	defer db.Close()
 
 	rows, err := db.Query(`
-		SELECT messageID, timestamp, status, message, senderName, receiverName
-		FROM Message
-		ORDER BY timestamp ASC
-	`)
+        SELECT messageID, timestamp, status, message, senderName, receiverName
+        FROM Message
+        WHERE (senderName = ? AND receiverName = ?)
+           OR (senderName = ? AND receiverName = ?)
+        ORDER BY timestamp ASC
+    `, myName, contactName, contactName, myName)
 	if err != nil {
 		return nil, err
 	}
