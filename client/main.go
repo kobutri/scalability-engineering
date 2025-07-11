@@ -566,11 +566,8 @@ func (c *Client) expandContacts() {
 	// Extract the oldest element from queryQueue (highest priority after negation)
 	_, containerID, ok := c.queryQueue.ExtractMin()
 	if !ok {
-		log.Println("No clients in query queue to expand contacts from")
 		return
 	}
-
-	log.Printf("Expanding contacts by querying %s", containerID)
 
 	// Get a random subset of current clients to send
 	randomSubset := c.clientManager.GetRandomSubset()
@@ -606,11 +603,7 @@ func (c *Client) expandContacts() {
 		return
 	}
 
-	// Add new contacts to client manager
-	newContactsCount := c.addNewContacts(receivedContacts)
-
-	log.Printf("Contact expansion from %s completed: received %d contacts, %d were new",
-		containerID, len(receivedContacts), newContactsCount)
+	c.addNewContacts(receivedContacts)
 }
 
 // Routine Worker:
@@ -624,7 +617,6 @@ func (c *Client) contactExpansionWorker(interval time.Duration) {
 			log.Println("Contact expansion worker shutting down")
 			return
 		case <-ticker.C:
-			log.Println("Expanding contact list...")
 			c.expandContacts()
 		}
 	}
