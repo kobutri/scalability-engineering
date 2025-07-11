@@ -35,15 +35,6 @@ type Client struct {
 	clientManagerHandlers *shared.ClientManagerHandlers
 }
 
-type Message struct {
-	ContainerID string `json:"container_id"`
-	MessageID   string `json:"message_id"`
-	Timestamp   string `json:"timestamp"`
-	Status      string `json:"status"` // sent, delivered, received
-	Message     string `json:"message"`
-	Port        int    `json:"port"`
-}
-
 // DiscoverClientIdentity discovers the client's identity from environment and system
 func DiscoverClientIdentity() shared.ClientIdentity {
 	identity := shared.ClientIdentity{}
@@ -412,10 +403,10 @@ func (c *Client) messageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Received message from %s: %s", msg.ContainerID, msg.Message)
+	log.Printf("Received message from %s: %s", msg.SenderName, msg.Message)
 
 	// Validierung der erforderlichen Felder
-	if msg.ContainerID == "" || msg.MessageID == "" || msg.Message == "" {
+	if msg.SenderName == "" || msg.MessageID == "" || msg.Message == "" {
 		http.Error(w, "containerID, messageID and message are required", http.StatusBadRequest)
 		return
 	}
@@ -440,16 +431,77 @@ func (c *Client) messageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Client) chatDashboardHandler(w http.ResponseWriter, r *http.Request) {
-	contacts, err := GetContactsWithLastMessages()
+
+	// Für jeden Kontakt die zugehörigen Nachrichten holen
+	contactMessages, err := c.GetAllContactMessages()
+
 	if err != nil {
-		http.Error(w, "Fehler beim Laden der Kontakte", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to get contact messages: %v", err), http.StatusInternalServerError)
+		return
+
+	}
+
+	log.Println("Konatkte und Nachrichten:", contactMessages)
+	chatDashboard(contactMessages, c.identity).Render(r.Context(), w)
+}
+
+// GetContactsFromQueue gibt alle Kontakte aus der PriorityQueue zurück
+func (c *Client) GetContactsFromQueue() []shared.ClientIdentity {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	// Hole alle ContainerIDs aus der PriorityQueue
+	_, containerIDs := c.queryQueue.ToSlices()
+
+	var contacts []shared.ClientIdentity
+
+	// Für jede ContainerID den entsprechenden Client finden
+	for _, containerID := range containerIDs {
+		if client, exists := c.clientManager.GetClient(containerID); exists {
+			contacts = append(contacts, client)
+		}
+	}
+
+	return contacts
+}
+
+func (c *Client) chatVerlaufHandler(w http.ResponseWriter, r *http.Request) {
+
+	log.Printf("chatVerlaufHandler called")
+	// Parse selected contact from form
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	selectedContact := r.FormValue("selected_contact")
+	if selectedContact == "" {
+		http.Error(w, "No contact selected", http.StatusBadRequest)
 		return
 	}
 
-	chatDashboard(contacts).Render(r.Context(), w)
+	log.Printf("Selected contact: %s", selectedContact)
+
+	// Get all contact messages
+	contactMessages, err := c.GetAllContactMessages()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get contact messages: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Filter messages for selected contact
+	var messages []Message
+	for _, cm := range contactMessages {
+		if cm.Contact == selectedContact {
+			messages = cm.Messages
+			break
+		}
+	}
+
+	log.Printf("Verlauf mit %s: %+v", selectedContact, messages)
+	chatVerlauf(contactMessages, c.identity, selectedContact, messages).Render(r.Context(), w)
 }
 
-func sendMessageHandler(w http.ResponseWriter, r *http.Request) {
+func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("sendMessageHandler called")
 
 	// Formular-Daten parsen
@@ -458,49 +510,91 @@ func sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	containerName := r.FormValue("containerID")
+	targetContainerName := r.FormValue("contact")
 	// Nachricht mit automatisch generierten Feldern erstellen
-	msg := Message{
-		ContainerID: containerName,
-		Port:        12345, // Fester Port
-		MessageID:   generateMessageID(),
-		Timestamp:   time.Now().Format(time.RFC3339),
-		Status:      "sent", // Automatisch auf "sent" setzen
-		Message:     r.FormValue("message"),
+	msgID := generateMessageID()
+	timestamp := time.Now().Format(time.RFC3339)
+	sendMsg := Message{
+		SenderName:   c.identity.Name,
+		ReceiverName: targetContainerName,
+		MessageID:    msgID,
+		Timestamp:    timestamp,
+		Status:       "received", // Automatisch auf "sent" setzen
+		Message:      r.FormValue("message"),
 	}
 
+	saveMsg := Message{
+		SenderName:   c.identity.Name,
+		ReceiverName: targetContainerName,
+		MessageID:    msgID,
+		Timestamp:    timestamp,
+		Status:       "sent", // Automatisch auf "sent" setzen
+		Message:      r.FormValue("message"),
+	}
+
+	RcvMessage(saveMsg) // Speichere die Nachricht in der Datenbank
+
 	// JSON kodieren
-	jsonData, err := json.Marshal(msg)
+	jsonData, err := json.Marshal(sendMsg)
 	if err != nil {
 		http.Error(w, "Failed to create JSON", http.StatusInternalServerError)
 		return
 	}
 
-	receiver := "scalability-engineering-client-" + containerName // Ensure the name has the prefix
+	receiver := "scalability-engineering-client-" + targetContainerName // Ensure the name has the prefix
 	targetURL := fmt.Sprintf("http://%s:9090/message", receiver)
 
-	log.Printf("Sending message to %s: %s", receiver, msg.Message)
+	log.Printf("Sending message to %s: %s", receiver, sendMsg.Message)
 
 	// REST-POST-Request an den Zielcontainer
 	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to send message to %s: %v", msg.ContainerID, err),
+		http.Error(w, fmt.Sprintf("Failed to send message to %s: %v", sendMsg.SenderName, err),
 			http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
 
 	log.Printf("Message sent with status: %s", resp.Status)
-	// Erfolgsmeldung zurückgeben
-	contacts, err := GetContactsWithLastMessages()
-	if err != nil {
-		http.Error(w, "Fehler beim Laden der Kontakte", http.StatusInternalServerError)
-		return
-	}
-
-	chatDashboard(contacts).Render(r.Context(), w)
 }
 
+type ContactMessages struct {
+	Contact  string
+	Messages []Message
+}
+
+// Gibt für jeden Kontakt alle zugehörigen Nachrichten zurück
+func (c *Client) GetAllContactMessages() ([]ContactMessages, error) {
+	var result []ContactMessages
+
+	contacts := c.GetContactsFromQueue()
+	for _, identity := range contacts {
+		messages, err := GetChatWithContact(c.identity.Name, identity.Name)
+		if err != nil {
+			messages = []Message{}
+		}
+		result = append(result, ContactMessages{
+			Contact:  identity.Name,
+			Messages: messages,
+		})
+	}
+	return result, nil
+}
+
+// Print outputs a nicely formatted representation of ContactMessages
+func (cm ContactMessages) Print() {
+	fmt.Printf("Contact: %s\n", cm.Contact)
+	fmt.Println("Messages:")
+	for i, msg := range cm.Messages {
+		fmt.Printf("  %d. [%s] %s -> %s: %s\n", i+1, msg.Timestamp, msg.SenderName, msg.ReceiverName, msg.Message)
+	}
+}
+
+// Dummy implementation for GetMessagesWithContact
+func GetMessagesWithContact(contactID string) ([]Message, error) {
+	// TODO: Replace with actual logic to fetch messages with the given contactID
+	return []Message{}, nil
+}
 func generateMessageID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
@@ -529,20 +623,6 @@ func (c *Client) contactsHandler(w http.ResponseWriter, r *http.Request) {
 	randomSubset := c.clientManager.GetRandomSubset() // Return up to 15 clients
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(randomSubset)
-}
-
-func handleGetMessages(w http.ResponseWriter, r *http.Request) {
-	containerID := r.URL.Query().Get("containerID")
-	if containerID == "" {
-		http.Error(w, "containerID fehlt", http.StatusBadRequest)
-		return
-	}
-	messages, err := LoadMessagesForClient(containerID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	json.NewEncoder(w).Encode(messages)
 }
 
 func (c *Client) whatsAppHandler(w http.ResponseWriter, r *http.Request) {
@@ -670,7 +750,7 @@ func main() {
 	}
 
 	// Starte contact-expansion worker, um Kontakte periodisch auszubauen
-	go client.contactExpansionWorker(30 * time.Second)
+	go client.contactExpansionWorker(10 * time.Second)
 
 	// Register shared client manager handlers
 	client.clientManagerHandlers.RegisterHandlers()
@@ -684,12 +764,11 @@ func main() {
 	http.HandleFunc("/alive", client.aliveHandler)
 
 	//Chats
-	http.HandleFunc("/message", client.messageHandler)    // Receive messages
-	http.HandleFunc("/chat", client.chatDashboardHandler) // Show chat dashboard
-	http.HandleFunc("/send-message", sendMessageHandler)
+	http.HandleFunc("/message", client.messageHandler)         // Receive messages
+	http.HandleFunc("/chat", client.chatDashboardHandler)      // Show chat dashboard
+	http.HandleFunc("/chatverlauf", client.chatVerlaufHandler) // Show chat dashboard
+	http.HandleFunc("/send-message", client.sendMessageHandler)
 	http.HandleFunc("/contacts", client.contactsHandler)
-	http.HandleFunc("/messages", handleGetMessages)
-	http.HandleFunc("/chats", client.whatsAppHandler) // Show chat dashboard
 
 	//nach unten verschoben, sonst werden andere Unterpfade abgefangen
 	http.HandleFunc("/", client.statusHandler)

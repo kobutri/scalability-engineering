@@ -4,6 +4,9 @@ import (
 	"shared"
 )
 
+const morphSwap = "morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}"
+
+
 // Client dashboard page
 templ ClientDashboard(data ClientData) {
 	<!DOCTYPE html>
@@ -57,107 +60,193 @@ templ ClientContent(data ClientData) {
 	</div>
 }
 
-// Chat dashboard for messaging
-templ chatDashboard(contacts []ContactWithMessage) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			<meta charset="UTF-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-			<title>Chat Dashboard</title>
-			<style>
-				body {
-					font-family: Arial, sans-serif;
-					margin: 0;
-					padding: 20px;
-					background-color: #f5f5f5;
-				}
-				.container {
-					max-width: 800px;
-					margin: 0 auto;
-					background: white;
-					padding: 20px;
-					border-radius: 8px;
-					box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-				}
-				h1 {
-					color: #333;
-					text-align: center;
-				}
-				.contact-item {
-					border: 1px solid #ddd;
-					padding: 15px;
-					margin: 10px 0;
-					border-radius: 5px;
-					background: #f9f9f9;
-				}
-				.contact-id {
-					font-weight: bold;
-					color: #666;
-				}
-				.last-message {
-					margin: 10px 0;
-					padding: 10px;
-					background: #e8f4f8;
-					border-radius: 3px;
-				}
-				.message-meta {
-					font-size: 0.9em;
-					color: #666;
-				}
-				.send-form {
-					margin-top: 10px;
-				}
-				.send-form input {
-					width: 70%;
-					padding: 8px;
-					margin-right: 10px;
-				}
-				.send-form button {
-					padding: 8px 15px;
-					background-color: #007bff;
-					color: white;
-					border: none;
-					border-radius: 3px;
-					cursor: pointer;
-				}
-				.send-form button:hover {
-					background-color: #0056b3;
-				}
-				.no-contacts {
-					text-align: center;
-					color: #999;
-					padding: 40px;
-				}
-			</style>
-		</head>
-		<body>
-			<div class="container">
-				<h1>Chat Dashboard</h1>
-				if len(contacts) > 0 {
+
+
+
+
+
+
+
+
+
+
+
+
+/// Dashboard mit Kontaktliste (nur Namen anzeigen) und Chatverlauf
+templ chatDashboard(contacts []ContactMessages, client shared.ClientIdentity) {
+	<div class="whatsapp-chat-container" style="display: flex; height: 600px; background: #ece5dd; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+		<!-- Sidebar: Kontaktliste (nur Namen) -->
+		<div class="whatsapp-sidebar" style="width: 320px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column;">
+			<div style="padding: 16px; background: #075e54; color: #fff; font-size: 20px; font-weight: bold;">
+				Kontakte, du bist { client.Name }
+			</div>
+			<div style="flex: 1; overflow-y: auto;">
+				<ul style="list-style: none; margin: 0; padding: 0;">
 					for _, contact := range contacts {
-						<div class="contact-item">
-							<div class="contact-id">Container ID: { contact.ContainerID }</div>
-							<div class="last-message">
-								<div><strong>Last Message:</strong> { contact.LastMessage }</div>
-								<div class="message-meta">
-									Time: { contact.LastMessageTime } | Status: { contact.LastMessageStatus }
-								</div>
-							</div>
-							<form id={ "send-form-" + contact.ContainerID } class="send-form" action="/send-message" method="POST">
-								<input type="hidden" name="containerID" value={ contact.ContainerID }/>
-								<input type="text" name="message" placeholder="Type your message..." required/>
-								<button type="submit">Send</button>
+						<li style="border-bottom: 1px solid #f0f0f0;">
+							<form 
+								method="POST" 
+								action="/chatverlauf" 
+								style="margin: 0;"
+							>
+								<input type="hidden" name="selected_contact" value={ contact.Contact } />
+								<input type="hidden" name="client_name" value={ client.Name } />
+								<button 
+									type="submit"
+									style="width: 100%; text-align: left; background: none; border: none; padding: 12px 16px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; color: inherit;"
+								>
+									<div style="font-weight: 500; color: #075e54;">{ contact.Contact }</div>
+								</button>
 							</form>
+						</li>
+					}
+				</ul>
+			</div>
+		</div>
+
+		<!-- Main Chat Area -->
+		<div class="whatsapp-main" style="flex: 1; display: flex; flex-direction: column; background: #ece5dd;">
+			<!-- Chat header -->
+			<div style="background: #075e54; color: #fff; padding: 14px 20px; font-size: 16px; font-weight: 500; border-bottom: 1px solid #ddd;">
+				Chat
+			</div>
+			<!-- Nachrichtenbereich -->
+			<div id="messages" style="flex: 1; overflow-y: auto; padding: 20px; background: #ece5dd;">
+				<p style="color: #666;">Wähle einen Kontakt aus, um den Chatverlauf anzuzeigen.</p>
+			</div>
+			<!-- Nachrichteneingabe -->
+			<form 
+				method="POST" 
+				action="/send-message" 
+				style="display: flex; align-items: center; padding: 16px; background: #f7f7f7; border-top: 1px solid #ddd;"
+			>
+				<input 
+					type="hidden"
+					name="sender"
+					value={ client.Name }
+				>
+				<input 
+					type="text" 
+					name="contact" 
+					placeholder="Empfänger-Name" 
+					required 
+					style="flex: 0 0 140px; margin-right: 8px; padding: 10px; border-radius: 20px; border: 1px solid #ccc; font-size: 14px;"
+				>
+				<textarea 
+					name="message" 
+					placeholder="Nachricht..." 
+					required 
+					style="flex: 1; margin-right: 8px; padding: 10px; border-radius: 20px; border: 1px solid #ccc; font-size: 14px; resize: none; height: 40px;"
+				></textarea>
+				<button type="submit" style="background: #25d366; color: #fff; border: none; border-radius: 20px; padding: 10px 20px; font-weight: bold; cursor: pointer;">
+					Senden
+				</button>
+			</form>
+		</div>
+	</div>
+}
+
+// Zeigt nur die Konversation zwischen userName und contact aus contacts
+templ chatMessages(contact string, userName string, contacts []ContactMessages) {
+	<div>
+		<h2>Chat zwischen { userName } und { contact }</h2>
+		<div class="message-list" style="margin-bottom: 10px;">
+			for _, c := range contacts {
+				if c.Contact == contact {
+					for _, msg := range c.Messages {
+						if (msg.SenderName == userName && msg.ReceiverName == contact) || (msg.SenderName == contact && msg.ReceiverName == userName) {
+							<div class="message" style="border-bottom: 1px solid #eee; padding: 5px 0;">
+								<small>{ msg.Timestamp } | { msg.SenderName } → { msg.ReceiverName }</small>
+								<p>{ msg.Message }</p>
+							</div>
+						}
+					}
+				}
+			}
+		</div>
+	</div>
+}
+
+
+// Dashboard mit Kontaktliste (nur Namen anzeigen) und Chatverlauf (zeigt rechts alle Nachrichten aus messages)
+templ chatVerlauf(contacts []ContactMessages, client shared.ClientIdentity, selectedContact string, messages []Message) {
+	<div class="whatsapp-chat-container" style="display: flex; height: 600px; background: #ece5dd; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+		<!-- Sidebar: Kontaktliste (nur Namen) -->
+		<div class="whatsapp-sidebar" style="width: 320px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column;">
+			<div style="padding: 16px; background: #075e54; color: #fff; font-size: 20px; font-weight: bold;">
+				Kontakte, du bist { client.Name }
+			</div>
+			<div style="flex: 1; overflow-y: auto;">
+				<ul style="list-style: none; margin: 0; padding: 0;">
+					for _, contact := range contacts {
+						<li style="border-bottom: 1px solid #f0f0f0;">
+							<form 
+								method="POST" 
+								action="/chatverlauf" 
+								style="margin: 0;"
+							>
+								<input type="hidden" name="selected_contact" value={ contact.Contact } />
+								<input type="hidden" name="client_name" value={ client.Name } />
+								<button 
+									type="submit"
+									style="width: 100%; text-align: left; background: none; border: none; padding: 12px 16px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; color: inherit;"
+								>
+									<div style="font-weight: 500; color: #075e54;">{ contact.Contact }</div>
+								</button>
+							</form>
+						</li>
+					}
+				</ul>
+			</div>
+		</div>
+
+		<!-- Main Chat Area -->
+		<div class="whatsapp-main" style="flex: 1; display: flex; flex-direction: column; background: #ece5dd;">
+			<!-- Chat header -->
+			<div style="background: #075e54; color: #fff; padding: 14px 20px; font-size: 16px; font-weight: 500; border-bottom: 1px solid #ddd;">
+				Chat, du schreibst mit {selectedContact}
+			</div>
+			<!-- Nachrichtenbereich: zeigt alle Nachrichten aus messages -->
+			<div id="messages" style="flex: 1; overflow-y: auto; padding: 20px; background: #ece5dd;">
+				if len(messages) == 0 {
+					<p style="color: #666;">Keine Nachrichten vorhanden.</p>
+				} else {
+					for _, msg := range messages {
+						<div class="message" style="border-bottom: 1px solid #eee; padding: 5px 0;">
+							<small>{ msg.Timestamp } | { msg.SenderName } → { msg.ReceiverName }</small>
+							<p>{ msg.Message }</p>
 						</div>
 					}
-				} else {
-					<div class="no-contacts">
-						<p>No contacts available</p>
-						<p>Connect to the bootstrap server to discover other clients</p>
-					</div>
 				}
 			</div>
-		</body>
-	</html>
+			<!-- Nachrichteneingabe -->
+			<form 
+				method="POST" 
+				action="/send-message" 
+				style="display: flex; align-items: center; padding: 16px; background: #f7f7f7; border-top: 1px solid #ddd;"
+			>
+				<input 
+					type="hidden"
+					name="sender"
+					value={ client.Name }
+				>
+				<input 
+					type="text" 
+					name="contact" 
+					placeholder="Empfänger-Name" 
+					required 
+					style="flex: 0 0 140px; margin-right: 8px; padding: 10px; border-radius: 20px; border: 1px solid #ccc; font-size: 14px;"
+				>
+				<textarea 
+					name="message" 
+					placeholder="Nachricht..." 
+					required 
+					style="flex: 1; margin-right: 8px; padding: 10px; border-radius: 20px; border: 1px solid #ccc; font-size: 14px; resize: none; height: 40px;"
+				></textarea>
+				<button type="submit" style="background: #25d366; color: #fff; border: none; border-radius: 20px; padding: 10px 20px; font-weight: bold; cursor: pointer;">
+					Senden
+				</button>
+			</form>
+		</div>
+	</div>
 }
