@@ -526,7 +526,7 @@ func (c *Client) contactsHandler(w http.ResponseWriter, r *http.Request) {
 		len(receivedContacts), newContactsCount)
 
 	// Return a random subset of contacts
-	randomSubset := c.clientManager.GetRandomSubset(15) // Return up to 15 clients
+	randomSubset := c.clientManager.GetRandomSubset() // Return up to 15 clients
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(randomSubset)
 }
@@ -604,6 +604,8 @@ func (c *Client) expandContacts() {
 	}
 
 	c.addNewContacts(receivedContacts)
+
+	c.queryQueue.Insert(-time.Now().UnixNano(), containerID) // Reinsert with current time as priority
 }
 
 // Routine Worker:
