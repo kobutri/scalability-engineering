@@ -90,12 +90,12 @@ templ chatDashboard(contacts []ContactMessages, client shared.ClientIdentity) {
 								style="margin: 0;"
 							>
 								<input type="hidden" name="selected_contact" value={ contact.Contact } />
-								<input type="hidden" name="client_name" value={ client.Name } />
+								<input type="hidden" name="client_name" value={ client.ContainerID } />
 								<button 
 									type="submit"
 									style="width: 100%; text-align: left; background: none; border: none; padding: 12px 16px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; color: inherit;"
 								>
-									<div style="font-weight: 500; color: #075e54;">{ contact.Contact }</div>
+									<div style="font-weight: 500; color: #075e54;">{ contact.ContactName }</div>
 								</button>
 							</form>
 						</li>
@@ -126,9 +126,9 @@ templ chatMessages(contact string, userName string, contacts []ContactMessages) 
 			for _, c := range contacts {
 				if c.Contact == contact {
 					for _, msg := range c.Messages {
-						if (msg.SenderName == userName && msg.ReceiverName == contact) || (msg.SenderName == contact && msg.ReceiverName == userName) {
+						if (msg.SenderID == userName && msg.ReceiverID == contact) || (msg.SenderID == contact && msg.ReceiverID == userName) {
 							<div class="message" style="border-bottom: 1px solid #eee; padding: 5px 0;">
-								<small>{ msg.Timestamp } | { msg.SenderName } → { msg.ReceiverName }</small>
+								<small>{ msg.Timestamp } | { msg.SenderID } → { msg.ReceiverID }</small>
 								<p>{ msg.Message }</p>
 							</div>
 						}
@@ -153,7 +153,7 @@ templ chatVerlauf(contacts []ContactMessages, client shared.ClientIdentity, sele
                     for _, contact := range contacts {
                         <li style="border-bottom: 1px solid #f0f0f0;">
                             <a 
-                                href={ "/chatverlauf?selected_contact=" + contact.Contact + "&client_name=" + client.Name }
+                                href={ "/chatverlauf?selected_contact=" + contact.Contact + "&client_name=" + client.ContainerID }
                                 style="display: block; width: 100%; text-align: left; background: none; border: none; padding: 12px 16px; cursor: pointer; text-decoration: none; color: inherit;"
                             >
                                 <div style="font-weight: 500; color: #075e54;">{ contact.Contact }</div>
@@ -178,7 +178,7 @@ templ chatVerlauf(contacts []ContactMessages, client shared.ClientIdentity, sele
                 } else {
                     for _, msg := range messages {
                         <div class="message" style="border-bottom: 1px solid #eee; padding: 5px 0;">
-                            <small>{ msg.Timestamp } | { msg.SenderName } → { msg.ReceiverName }</small>
+                            <small>{ msg.Timestamp } | { msg.SenderID } → { msg.ReceiverID }</small>
                             <p>{ msg.Message }</p>
                         </div>
                     }
@@ -191,22 +191,20 @@ templ chatVerlauf(contacts []ContactMessages, client shared.ClientIdentity, sele
                 style="display: flex; align-items: center; padding: 16px; background: #f7f7f7; border-top: 1px solid #ddd;"
             >
                 <input 
-                    type="hidden"
-                    name="sender"
-                    value={ client.Name }
-                >
-                <input 
-                    type="hidden"
-                    name="contact"
+                    type="hidden" 
+                    name="contact" 
                     value={ selectedContact }
-                >
-                <textarea 
+                />
+                <input 
+                    type="text" 
                     name="message" 
-                    placeholder="Nachricht..." 
-                    required 
-                    style="flex: 1; margin-right: 8px; padding: 10px; border-radius: 20px; border: 1px solid #ccc; font-size: 14px; resize: none; height: 40px;"
-                ></textarea>
-                <button type="submit" style="background: #25d366; color: #fff; border: none; border-radius: 20px; padding: 10px 20px; font-weight: bold; cursor: pointer;">
+                    placeholder="Nachricht eingeben..." 
+                    style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 20px; margin-right: 10px; outline: none;"
+                />
+                <button 
+                    type="submit" 
+                    style="background: #075e54; color: #fff; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer;"
+                >
                     Senden
                 </button>
             </form>

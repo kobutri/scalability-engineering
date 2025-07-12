@@ -404,11 +404,9 @@ func (c *Client) messageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Received message from %s: %s", msg.SenderName, msg.Message)
-
 	// Validierung der erforderlichen Felder
-	if msg.SenderName == "" || msg.MessageID == "" || msg.Message == "" {
-		http.Error(w, "containerID, messageID and message are required", http.StatusBadRequest)
+	if msg.SenderID == "" || msg.MessageID == "" || msg.Message == "" {
+		http.Error(w, "senderID, messageID and message are required", http.StatusBadRequest)
 		return
 	}
 
@@ -468,7 +466,6 @@ func (c *Client) GetContactsFromQueue() []shared.ClientIdentity {
 
 func (c *Client) chatVerlaufHandler(w http.ResponseWriter, r *http.Request) {
 
-	log.Printf("chatVerlaufHandler called")
 	// Parse selected contact from form
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -507,7 +504,6 @@ func (c *Client) chatVerlaufHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("sendMessageHandler called")
 
 	// Formular-Daten parsen
 	if err := r.ParseForm(); err != nil {
@@ -515,26 +511,26 @@ func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetContainerName := r.FormValue("contact")
+	targetContainerID := r.FormValue("contact")
 	// Nachricht mit automatisch generierten Feldern erstellen
 	msgID := generateMessageID()
 	timestamp := time.Now().Format(time.RFC3339)
 	sendMsg := Message{
-		SenderName:   c.identity.Name,
-		ReceiverName: targetContainerName,
-		MessageID:    msgID,
-		Timestamp:    timestamp,
-		Status:       "received", // Automatisch auf "sent" setzen
-		Message:      r.FormValue("message"),
+		SenderID:   c.identity.ContainerID,
+		ReceiverID: targetContainerID,
+		MessageID:  msgID,
+		Timestamp:  timestamp,
+		Status:     "received", // Automatisch auf "sent" setzen
+		Message:    r.FormValue("message"),
 	}
 
 	saveMsg := Message{
-		SenderName:   c.identity.Name,
-		ReceiverName: targetContainerName,
-		MessageID:    msgID,
-		Timestamp:    timestamp,
-		Status:       "sent", // Automatisch auf "sent" setzen
-		Message:      r.FormValue("message"),
+		SenderID:   c.identity.ContainerID,
+		ReceiverID: targetContainerID,
+		MessageID:  msgID,
+		Timestamp:  timestamp,
+		Status:     "sent", // Automatisch auf "sent" setzen
+		Message:    r.FormValue("message"),
 	}
 
 	RcvMessage(saveMsg) // Speichere die Nachricht in der Datenbank
@@ -546,15 +542,13 @@ func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	receiver := "scalability-engineering-client-" + targetContainerName // Ensure the name has the prefix
-	targetURL := fmt.Sprintf("http://%s:9090/message", receiver)
-
-	log.Printf("Sending message to %s: %s", receiver, sendMsg.Message)
+	// Use target container ID directly for HTTP request
+	targetURL := fmt.Sprintf("http://%s:9090/message", targetContainerID)
 
 	// REST-POST-Request an den Zielcontainer
 	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to send message to %s: %v", sendMsg.SenderName, err),
+		http.Error(w, fmt.Sprintf("Failed to send message to %s: %v", sendMsg.SenderID, err),
 			http.StatusInternalServerError)
 		return
 	}
@@ -565,35 +559,36 @@ func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 	contactMessages, err := c.GetAllContactMessages()
 	var messages []Message
 	for _, cm := range contactMessages {
-		if cm.Contact == targetContainerName {
+		if cm.Contact == targetContainerID {
 			messages = cm.Messages
 			break
 		}
 	}
 
-	chatVerlauf(contactMessages, c.identity, targetContainerName, messages).Render(r.Context(), w)
+	chatVerlauf(contactMessages, c.identity, targetContainerID, messages).Render(r.Context(), w)
 
 }
 
 type ContactMessages struct {
-	Contact  string
-	Messages []Message
+	Contact     string // Container ID for logic
+	ContactName string // Display name for UI
+	Messages    []Message
 }
 
-// Gibt für jeden Kontakt alle zugehörigen Nachrichten zurück
 // Gibt für jeden Kontakt alle zugehörigen Nachrichten zurück, sortiert nach Timestamp und Contact
 func (c *Client) GetAllContactMessages() ([]ContactMessages, error) {
 	var result []ContactMessages
 
 	contacts := c.GetContactsFromQueue()
 	for _, identity := range contacts {
-		messages, err := GetChatWithContact(c.identity.Name, identity.Name)
+		messages, err := GetChatWithContact(c.identity.ContainerID, identity.ContainerID)
 		if err != nil {
 			messages = []Message{}
 		}
 		result = append(result, ContactMessages{
-			Contact:  identity.Name,
-			Messages: messages,
+			Contact:     identity.ContainerID,
+			ContactName: c.GetContactName(identity.ContainerID),
+			Messages:    messages,
 		})
 	}
 
@@ -638,7 +633,7 @@ func (cm ContactMessages) Print() {
 	fmt.Printf("Contact: %s\n", cm.Contact)
 	fmt.Println("Messages:")
 	for i, msg := range cm.Messages {
-		fmt.Printf("  %d. [%s] %s -> %s: %s\n", i+1, msg.Timestamp, msg.SenderName, msg.ReceiverName, msg.Message)
+		fmt.Printf("  %d. [%s] %s -> %s: %s\n", i+1, msg.Timestamp, msg.SenderID, msg.ReceiverID, msg.Message)
 	}
 }
 
@@ -675,10 +670,6 @@ func (c *Client) contactsHandler(w http.ResponseWriter, r *http.Request) {
 	randomSubset := c.clientManager.GetRandomSubset() // Return up to 15 clients
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(randomSubset)
-}
-
-func (c *Client) whatsAppHandler(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "index.html")
 }
 
 // addNewContacts adds contacts to the client manager, returning the count of new contacts added
@@ -754,6 +745,41 @@ func (c *Client) contactExpansionWorker(interval time.Duration) {
 			c.expandContacts()
 		}
 	}
+}
+
+// Helper functions for name resolution
+
+// GetContactName resolves a container ID to a display name
+func (c *Client) GetContactName(containerID string) string {
+	if client, exists := c.clientManager.GetClient(containerID); exists {
+		return client.Name
+	}
+	// If not found in client manager, return the container ID as fallback
+	return containerID
+}
+
+// GetContactsWithNames returns contacts with resolved names for display
+func (c *Client) GetContactsWithNames() []struct {
+	ContainerID string
+	Name        string
+} {
+	var result []struct {
+		ContainerID string
+		Name        string
+	}
+
+	contacts := c.GetContactsFromQueue()
+	for _, contact := range contacts {
+		result = append(result, struct {
+			ContainerID string
+			Name        string
+		}{
+			ContainerID: contact.ContainerID,
+			Name:        contact.Name,
+		})
+	}
+
+	return result
 }
 
 // MAIN
