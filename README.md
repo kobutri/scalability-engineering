@@ -100,15 +100,12 @@ The benchmark tool provides comprehensive load testing for the bootstrap server 
 - **Worker Pool**: Concurrent operations with configurable thread count
 - **Live Graphs**: Visual monitoring of performance metrics
 
-### Quick Benchmark
+### Launch Benchmark Tool
 
 ```bash
-# Run basic benchmark (100 clients, 10 ops/second)
+# Run basic benchmark (http://localhost:8090/)
 cd benchmark
-./run.sh
-
-# Or with custom configuration
-MAX_CLIENTS=500 THROTTLE_OPS=50 ./run.sh
+docker compose -f docker-compose.benchmark.yml up -d
 ```
 
 ### Benchmark Configuration
