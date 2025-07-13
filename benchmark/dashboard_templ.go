@@ -348,7 +348,7 @@ func BenchmarkConfigPanel(data *BenchmarkData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" min=\"1\" max=\"10000\"></div><div class=\"form-group\"><label>Throttle (OPS):</label> <input type=\"number\" name=\"throttle_ops\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" min=\"1\"></div><div class=\"form-group\"><label>Throttle (OPS):</label> <input type=\"number\" name=\"throttle_ops\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -361,7 +361,7 @@ func BenchmarkConfigPanel(data *BenchmarkData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "\" min=\"1\" max=\"1000\"></div><div class=\"form-group\"><label>Worker Count:</label> <input type=\"number\" name=\"worker_count\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "\" min=\"1\"></div><div class=\"form-group\"><label>Worker Count:</label> <input type=\"number\" name=\"worker_count\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

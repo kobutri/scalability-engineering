@@ -22,9 +22,9 @@ import (
 
 var globalHTTPClient = &http.Client{
 	Transport: &http.Transport{
-		MaxIdleConns:        1000,
-		MaxIdleConnsPerHost: 100,
-		MaxConnsPerHost:     1000,
+		MaxIdleConns:        600,
+		MaxIdleConnsPerHost: 600,
+		MaxConnsPerHost:     600,
 		IdleConnTimeout:     90 * time.Second,
 		DisableKeepAlives:   false,
 		DialContext: (&net.Dialer{
@@ -457,9 +457,8 @@ func (bt *BenchmarkTool) connectToBootstrap(client *http.Client, bootstrapURL st
 	req.Header.Set("Connection", "keep-alive")
 
 	resp, err := client.Do(req)
-	requestDuration := time.Since(start)
-
 	if err != nil {
+		requestDuration := time.Since(start)
 		return OperationResult{
 			Success:   false,
 			Duration:  requestDuration,
@@ -472,6 +471,7 @@ func (bt *BenchmarkTool) connectToBootstrap(client *http.Client, bootstrapURL st
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		requestDuration := time.Since(start)
 		return OperationResult{
 			Success:   false,
 			Duration:  requestDuration,
@@ -481,9 +481,11 @@ func (bt *BenchmarkTool) connectToBootstrap(client *http.Client, bootstrapURL st
 		}
 	}
 
-	// After connect request
-	log.Printf("DEBUG: HTTP/%s, Status: %d, Connection: %s, Content-Length: %s",
-		resp.Proto, resp.StatusCode, resp.Header.Get("Connection"), resp.Header.Get("Content-Length"))
+	// Fully read the response body to ensure connection reuse
+	io.Copy(io.Discard, resp.Body)
+
+	// Calculate total duration including body reading
+	requestDuration := time.Since(start)
 
 	return OperationResult{
 		Success:   true,
@@ -513,9 +515,8 @@ func (bt *BenchmarkTool) disconnectFromBootstrap(client *http.Client, bootstrapU
 	req.Header.Set("Connection", "keep-alive")
 
 	resp, err := client.Do(req)
-	requestDuration := time.Since(start)
-
 	if err != nil {
+		requestDuration := time.Since(start)
 		return OperationResult{
 			Success:   false,
 			Duration:  requestDuration,
@@ -528,6 +529,7 @@ func (bt *BenchmarkTool) disconnectFromBootstrap(client *http.Client, bootstrapU
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		requestDuration := time.Since(start)
 		return OperationResult{
 			Success:   false,
 			Duration:  requestDuration,
@@ -537,9 +539,11 @@ func (bt *BenchmarkTool) disconnectFromBootstrap(client *http.Client, bootstrapU
 		}
 	}
 
-	// After disconnect request
-	// log.Printf("DEBUG: HTTP/%s, Status: %d, Connection: %s, Content-Length: %s",
-	// 	resp.Proto, resp.StatusCode, resp.Header.Get("Connection"), resp.Header.Get("Content-Length"))
+	// Fully read the response body to ensure connection reuse
+	io.Copy(io.Discard, resp.Body)
+
+	// Calculate total duration including body reading
+	requestDuration := time.Since(start)
 
 	return OperationResult{
 		Success:   true,
@@ -679,7 +683,7 @@ func main() {
 		MaxClients:        getEnvInt("MAX_CLIENTS", 100),
 		ThrottleOPS:       getEnvInt("THROTTLE_OPS", 10),
 		BootstrapURL:      getEnvString("BOOTSTRAP_URL", "http://localhost:8080"),
-		WorkerCount:       getEnvInt("WORKER_COUNT", 10),
+		WorkerCount:       getEnvInt("WORKER_COUNT", 100),
 		MetricsInterval:   getEnvDuration("METRICS_INTERVAL", 1*time.Second),
 		LatencyBufferSize: getEnvInt("LATENCY_BUFFER_SIZE", 1000),
 	}
