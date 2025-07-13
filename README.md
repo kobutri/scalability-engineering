@@ -174,40 +174,6 @@ curl http://localhost:8080/
 curl -X POST http://localhost:8080/bulk-create-clients -d "count=10"
 ```
 
-### Run Load Test
-
-```bash
-# Basic load test
-docker run -p 8090:8090 \
-  -e MAX_CLIENTS=100 \
-  -e THROTTLE_OPS=10 \
-  -e BOOTSTRAP_URL=http://host.docker.internal:8080 \
-  bootstrap-benchmark
-```
-
-### 
-
-## Development
-
-### Running Tests
-
-```bash
-cd bootstrap
-go test -v
-go test -race  # Test for race conditions
-```
-
-### Building Docker Images
-
-```bash
-./build.sh  # Builds bootstrap, client, and benchmark images
-```
-
-### Docker Compose Files
-
-- `docker-compose.yml` - Production configuration
-- `docker-compose.dev.yml` - Development with hot reloading
-
 ## Architecture
 
 The bootstrap server uses:
@@ -234,4 +200,8 @@ This implementation is provided as-is for educational and practical use.
 1) **Managed State:** Chat Messages, Registered ClientIdentities, QueryQueues, Live Data
 2) **Scale vertically and horizontally:** Network scales with additional peers, Bootstrap Server can limit the  amount of requests per second
 3) **No Overloading at full scale:** Once a client is registered, the bootstrap server no longer needs to be involved in contact establishment. Clients only share a controlled number of peer contacts with each other. Alive requests to the Bootstrap Server are also limited.
-4) **Additional Strategies:** **Sharding** (peers store their own chat messages, clientIdentities, queues etc.), **Priority Queue** (checking for alive peers and only using them for requests via the query queue), **Replication** (clientIdentities can be obtained through other peers), **Eventual Consistency** (All peers will eventually get to know all the other peers in the network, through the queryQueue and the expansionHandler())
+4) **Additional Strategies:** 
+**Sharding** (peers store their own chat messages, clientIdentities, queues etc.), 
+**Priority Queue** (checking for alive peers and only using them for requests via the query queue), 
+**Replication** (clientIdentities can be obtained through other peers), 
+**Eventual Consistency** (All peers will eventually get to know all the other peers in the network, through the queryQueue and the expansionHandler())
