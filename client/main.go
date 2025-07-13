@@ -479,28 +479,18 @@ func (c *Client) chatVerlaufHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Selected contact: %s", selectedContact)
 
-	// Get all contact messages
-	contactMessages, err := c.GetAllContactMessages()
+	// Get only the messages for this specific contact
+	messages, err := GetChatWithContact(c.identity.ContainerID, selectedContact)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get contact messages: %v", err), http.StatusInternalServerError)
-		return
+		log.Printf("Failed to get messages for contact %s: %v", selectedContact, err)
+		messages = []Message{}
 	}
 
-	for _, cm := range contactMessages {
-		log.Printf("Contact: %s, Messages: %d", cm.Contact, len(cm.Messages))
-	}
+	// Get the contact name for display
+	contactName := c.GetContactName(selectedContact)
 
-	// Filter messages for selected contact
-	var messages []Message
-	for _, cm := range contactMessages {
-		if cm.Contact == selectedContact {
-			messages = cm.Messages
-			break
-		}
-	}
-
-	log.Printf("Verlauf mit %s: %+v", selectedContact, messages)
-	chatVerlauf(contactMessages, c.identity, selectedContact, messages).Render(r.Context(), w)
+	log.Printf("Verlauf mit %s (%d messages)", contactName, len(messages))
+	chatVerlauf(messages, c.identity, selectedContact, contactName).Render(r.Context(), w)
 }
 
 func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
@@ -512,6 +502,13 @@ func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	targetContainerID := r.FormValue("contact")
+	messageText := r.FormValue("message")
+
+	if targetContainerID == "" || messageText == "" {
+		http.Error(w, "Contact and message are required", http.StatusBadRequest)
+		return
+	}
+
 	// Nachricht mit automatisch generierten Feldern erstellen
 	msgID := generateMessageID()
 	timestamp := time.Now().Format(time.RFC3339)
@@ -520,53 +517,68 @@ func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 		ReceiverID: targetContainerID,
 		MessageID:  msgID,
 		Timestamp:  timestamp,
-		Status:     "received", // Automatisch auf "sent" setzen
-		Message:    r.FormValue("message"),
+		Status:     "received", // Status for the receiving side
+		Message:    messageText,
 	}
 
+	// JSON kodieren
+	jsonData, err := json.Marshal(sendMsg)
+	if err != nil {
+		log.Printf("Failed to create JSON: %v", err)
+		http.Error(w, "Failed to encode message", http.StatusInternalServerError)
+		return
+	}
+
+	// Use target container ID directly for HTTP request with namespaced endpoint
+	targetURL := fmt.Sprintf("http://%s:9090/chat/message", targetContainerID)
+
+	log.Printf("Sending message to %s: %s", targetContainerID, sendMsg.Message)
+
+	// Send message synchronously first
+	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Failed to send message to %s: %v", targetContainerID, err)
+		http.Error(w, fmt.Sprintf("Failed to send message: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check if the send was successful
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Message send to %s failed with status %d", targetContainerID, resp.StatusCode)
+		http.Error(w, fmt.Sprintf("Failed to send message: server returned status %d", resp.StatusCode), http.StatusBadGateway)
+		return
+	}
+
+	log.Printf("Message sent successfully to %s with status: %s", targetContainerID, resp.Status)
+
+	// Only save to database if send was successful
 	saveMsg := Message{
 		SenderID:   c.identity.ContainerID,
 		ReceiverID: targetContainerID,
 		MessageID:  msgID,
 		Timestamp:  timestamp,
-		Status:     "sent", // Automatisch auf "sent" setzen
-		Message:    r.FormValue("message"),
+		Status:     "sent", // Status for our local copy
+		Message:    messageText,
 	}
 
-	RcvMessage(saveMsg) // Speichere die Nachricht in der Datenbank
-
-	// JSON kodieren
-	jsonData, err := json.Marshal(sendMsg)
-	if err != nil {
-		http.Error(w, "Failed to create JSON", http.StatusInternalServerError)
+	if err := RcvMessage(saveMsg); err != nil {
+		log.Printf("Failed to save message to database: %v", err)
+		http.Error(w, "Message sent but failed to save locally", http.StatusInternalServerError)
 		return
 	}
 
-	// Use target container ID directly for HTTP request
-	targetURL := fmt.Sprintf("http://%s:9090/message", targetContainerID)
-
-	// REST-POST-Request an den Zielcontainer
-	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
+	// Return updated chat area for HTMX
+	messages, err := GetChatWithContact(c.identity.ContainerID, targetContainerID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to send message to %s: %v", sendMsg.SenderID, err),
-			http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	log.Printf("Message sent with status: %s", resp.Status)
-
-	contactMessages, err := c.GetAllContactMessages()
-	var messages []Message
-	for _, cm := range contactMessages {
-		if cm.Contact == targetContainerID {
-			messages = cm.Messages
-			break
-		}
+		log.Printf("Failed to get messages for contact %s: %v", targetContainerID, err)
+		messages = []Message{}
 	}
 
-	chatVerlauf(contactMessages, c.identity, targetContainerID, messages).Render(r.Context(), w)
+	// Get the contact name for display
+	contactName := c.GetContactName(targetContainerID)
 
+	chatVerlauf(messages, c.identity, targetContainerID, contactName).Render(r.Context(), w)
 }
 
 type ContactMessages struct {
@@ -575,38 +587,73 @@ type ContactMessages struct {
 	Messages    []Message
 }
 
-// Gibt für jeden Kontakt alle zugehörigen Nachrichten zurück, sortiert nach Timestamp und Contact
+// Optimized function: get all contacts from DB with most recent message,
+// then append contacts from queue that aren't already in the list
 func (c *Client) GetAllContactMessages() ([]ContactMessages, error) {
-	var result []ContactMessages
-
-	contacts := c.GetContactsFromQueue()
-	for _, identity := range contacts {
-		messages, err := GetChatWithContact(c.identity.ContainerID, identity.ContainerID)
-		if err != nil {
-			messages = []Message{}
-		}
-		result = append(result, ContactMessages{
-			Contact:     identity.ContainerID,
-			ContactName: c.GetContactName(identity.ContainerID),
-			Messages:    messages,
-		})
+	// Step 1: Get all contacts from database with their most recent message
+	dbContacts, err := GetContactsWithLastMessage(c.identity.ContainerID)
+	if err != nil {
+		return nil, err
 	}
 
-	// Sortiere die Kontakte und ihre Nachrichten
+	// Step 2: Create map for efficient lookup and result slice
+	contactMap := make(map[string]ContactMessages)
+	var result []ContactMessages
+
+	// Add database contacts to map and result
+	for _, dbContact := range dbContacts {
+		var messages []Message
+		if dbContact.LastMessage != nil {
+			messages = []Message{*dbContact.LastMessage}
+		}
+
+		contactMsg := ContactMessages{
+			Contact:     dbContact.ContainerID,
+			ContactName: dbContact.Name,
+			Messages:    messages,
+		}
+		contactMap[dbContact.ContainerID] = contactMsg
+		result = append(result, contactMsg)
+	}
+
+	// Step 3: Add contacts from queue that aren't already in the database
+	queueContacts := c.GetContactsFromQueue()
+	for _, queueContact := range queueContacts {
+		if _, exists := contactMap[queueContact.ContainerID]; !exists {
+			// This contact is not in the database yet - add it
+			err := AddContact(Contact{
+				ContainerID: queueContact.ContainerID,
+				Name:        queueContact.Name,
+				Hostname:    queueContact.Hostname,
+			})
+			if err != nil {
+				log.Printf("Failed to add contact to database: %v", err)
+			}
+
+			contactMsg := ContactMessages{
+				Contact:     queueContact.ContainerID,
+				ContactName: queueContact.Name,
+				Messages:    []Message{}, // No messages yet
+			}
+			result = append(result, contactMsg)
+		}
+	}
+
+	// Step 4: Sort contacts by most recent message timestamp
 	sort.Slice(result, func(i, j int) bool {
-		// Fall 1: Beide Kontakte haben Nachrichten
+		// Fall 1: Both contacts have messages
 		if len(result[i].Messages) > 0 && len(result[j].Messages) > 0 {
-			// Vergleiche die neueste Nachricht jedes Kontakts
+			// Compare the latest message timestamp
 			latestI := result[i].Messages[len(result[i].Messages)-1].Timestamp
 			latestJ := result[j].Messages[len(result[j].Messages)-1].Timestamp
 
 			if latestI != latestJ {
-				return latestI > latestJ // neueste zuerst
+				return latestI > latestJ // newest first
 			}
-			return result[i].Contact < result[j].Contact // bei gleichem Timestamp alphabetisch
+			return result[i].Contact < result[j].Contact // alphabetical for same timestamp
 		}
 
-		// Fall 2: Nur einer hat Nachrichten - dieser kommt zuerst
+		// Fall 2: Only one has messages - that one comes first
 		if len(result[i].Messages) > 0 {
 			return true
 		}
@@ -614,34 +661,13 @@ func (c *Client) GetAllContactMessages() ([]ContactMessages, error) {
 			return false
 		}
 
-		// Fall 3: Keine Nachrichten - sortiere alphabetisch
+		// Fall 3: No messages - sort alphabetically
 		return result[i].Contact < result[j].Contact
 	})
-
-	// Sortiere die Nachrichten jedes Kontakts chronologisch (älteste zuerst)
-	for _, cm := range result {
-		sort.Slice(cm.Messages, func(i, j int) bool {
-			return cm.Messages[i].Timestamp < cm.Messages[j].Timestamp
-		})
-	}
 
 	return result, nil
 }
 
-// Print outputs a nicely formatted representation of ContactMessages
-func (cm ContactMessages) Print() {
-	fmt.Printf("Contact: %s\n", cm.Contact)
-	fmt.Println("Messages:")
-	for i, msg := range cm.Messages {
-		fmt.Printf("  %d. [%s] %s -> %s: %s\n", i+1, msg.Timestamp, msg.SenderID, msg.ReceiverID, msg.Message)
-	}
-}
-
-// Dummy implementation for GetMessagesWithContact
-func GetMessagesWithContact(contactID string) ([]Message, error) {
-	// TODO: Replace with actual logic to fetch messages with the given contactID
-	return []Message{}, nil
-}
 func generateMessageID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
@@ -747,6 +773,22 @@ func (c *Client) contactExpansionWorker(interval time.Duration) {
 	}
 }
 
+// HTMX Chat Namespace Endpoints
+
+// Returns the contact list partial for periodic updates
+func (c *Client) chatContactsHandler(w http.ResponseWriter, r *http.Request) {
+	contactMessages, err := c.GetAllContactMessages()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get contact messages: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Get selected contact from query parameter if any
+	selectedContact := r.URL.Query().Get("selected")
+
+	contactListPartial(contactMessages, selectedContact).Render(r.Context(), w)
+}
+
 // Helper functions for name resolution
 
 // GetContactName resolves a container ID to a display name
@@ -841,14 +883,16 @@ func main() {
 	http.HandleFunc("/refresh", client.refreshHandler)
 	http.HandleFunc("/alive", client.aliveHandler)
 
-	//Chats
-	http.HandleFunc("/message", client.messageHandler)         // Receive messages
-	http.HandleFunc("/chat", client.chatDashboardHandler)      // Show chat dashboard
-	http.HandleFunc("/chatverlauf", client.chatVerlaufHandler) // Show chat dashboard
-	http.HandleFunc("/send-message", client.sendMessageHandler)
 	http.HandleFunc("/contacts", client.contactsHandler)
 
-	//nach unten verschoben, sonst werden andere Unterpfade abgefangen
+	// Chat Endpoints - all namespaced under /chat/
+	http.HandleFunc("/chat/message", client.messageHandler)          // Receive messages
+	http.HandleFunc("/chat/dashboard", client.chatDashboardHandler)  // Show chat dashboard
+	http.HandleFunc("/chat/conversation", client.chatVerlaufHandler) // Show chat conversation
+	http.HandleFunc("/chat/send", client.sendMessageHandler)         // Send messages
+	http.HandleFunc("/chat/contacts", client.chatContactsHandler)    // Contact list partial
+
+	// Status handler - moved to end to avoid catching other paths
 	http.HandleFunc("/", client.statusHandler)
 
 	log.Printf("Starting client '%s' on port %s", client.GetClientName(), port)

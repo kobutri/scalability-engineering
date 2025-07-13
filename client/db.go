@@ -121,3 +121,109 @@ func (m Message) Print() {
 	log.Printf("ID: %s | Time: %s | Status: %s | From: %s | To: %s | Text: %s",
 		m.MessageID, m.Timestamp, m.Status, m.SenderID, m.ReceiverID, m.Message)
 }
+
+// ContactWithLastMessage represents a contact with their most recent message
+type ContactWithLastMessage struct {
+	ContainerID string
+	Name        string
+	Hostname    string
+	LastMessage *Message // nil if no messages exist
+}
+
+// GetContactsWithLastMessage gets all contacts from database with their most recent message
+// This is much more efficient than getting all contacts and then fetching all messages for each
+func GetContactsWithLastMessage(myID string) ([]ContactWithLastMessage, error) {
+	db, err := sql.Open("sqlite", "./chats.db")
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	// Query to get all contacts with their most recent message
+	// Uses a LEFT JOIN with a subquery to get the most recent message for each contact
+	query := `
+		SELECT 
+			c.containerID,
+			c.name,
+			c.hostname,
+			m.messageID,
+			m.timestamp,
+			m.status,
+			m.message,
+			m.senderID,
+			m.receiverID
+		FROM Contact c
+		LEFT JOIN (
+			SELECT 
+				CASE 
+					WHEN senderID = ? THEN receiverID
+					ELSE senderID
+				END as contactID,
+				messageID,
+				timestamp,
+				status,
+				message,
+				senderID,
+				receiverID,
+				ROW_NUMBER() OVER (
+					PARTITION BY CASE 
+						WHEN senderID = ? THEN receiverID
+						ELSE senderID
+					END 
+					ORDER BY timestamp DESC
+				) as rn
+			FROM Message
+			WHERE senderID = ? OR receiverID = ?
+		) m ON c.containerID = m.contactID AND m.rn = 1
+		ORDER BY 
+			CASE 
+				WHEN m.timestamp IS NULL THEN 1
+				ELSE 0
+			END,
+			m.timestamp DESC,
+			c.containerID ASC
+	`
+
+	rows, err := db.Query(query, myID, myID, myID, myID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var contacts []ContactWithLastMessage
+	for rows.Next() {
+		var c ContactWithLastMessage
+		var msgID, timestamp, status, message, senderID, receiverID sql.NullString
+
+		err := rows.Scan(
+			&c.ContainerID,
+			&c.Name,
+			&c.Hostname,
+			&msgID,
+			&timestamp,
+			&status,
+			&message,
+			&senderID,
+			&receiverID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// If there's a message, create the Message struct
+		if msgID.Valid {
+			c.LastMessage = &Message{
+				MessageID:  msgID.String,
+				Timestamp:  timestamp.String,
+				Status:     status.String,
+				Message:    message.String,
+				SenderID:   senderID.String,
+				ReceiverID: receiverID.String,
+			}
+		}
+
+		contacts = append(contacts, c)
+	}
+
+	return contacts, nil
+}
