@@ -111,10 +111,10 @@ templ chatDashboard(contacts []ContactMessages, client shared.ClientIdentity) {
 		</head>
 		<body hx-ext="morph">
 			<div class="whatsapp-chat-container" style="display: flex; height: 100vh; background: #ece5dd; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-				<!-- Sidebar: Kontaktliste (nur Namen) -->
+				<!-- Sidebar: Contact list -->
 				<div class="whatsapp-sidebar" style="width: 320px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column;">
 					<div style="padding: 16px; background: #075e54; color: #fff; font-size: 20px; font-weight: bold;">
-						Kontakte, du bist { client.Name }
+						Contact list, you are { client.Name }
 					</div>
 					@contactListPartial(contacts, "")
 				</div>
@@ -128,7 +128,7 @@ templ chatDashboard(contacts []ContactMessages, client shared.ClientIdentity) {
 					<div style="background: #075e54; color: #fff; padding: 14px 20px; font-size: 16px; font-weight: 500; border-bottom: 1px solid #ddd;">
 						Chat
 					</div>
-					<!-- Nachrichtenbereich -->
+					<!-- Messaging area -->
 					<div id="messages" style="flex: 1; overflow-y: auto; padding: 20px; background: #ece5dd;">
 						<p style="color: #666;">Wähle einen Kontakt aus, um den Chatverlauf anzuzeigen.</p>
 					</div>
@@ -176,7 +176,7 @@ templ contactListPartial(contacts []ContactMessages, selectedContactID string) {
 	</div>
 }
 
-// Zeigt nur die Konversation zwischen userName und contact aus contacts
+// Show chat messages for a specific contact
 templ chatMessages(contact string, userName string, contacts []ContactMessages) {
 	<div>
 		<h2>Chat zwischen { userName } und { contact }</h2>
@@ -211,12 +211,12 @@ templ chatVerlauf(messages []Message, client shared.ClientIdentity, selectedCont
 	>
 		<!-- Chat header -->
 		<div style="background: #075e54; color: #fff; padding: 14px 20px; font-size: 16px; font-weight: 500; border-bottom: 1px solid #ddd;">
-			Chat, du schreibst mit { contactName }
+			Chat, you are chatting with { contactName }
 		</div>
-		<!-- Nachrichtenbereich: zeigt alle Nachrichten aus messages -->
+		<!-- Show all messages for contact -->
 		<div id="messages" style="flex: 1; overflow-y: auto; padding: 20px; background: #ece5dd;">
 			if len(messages) == 0 {
-				<p style="color: #666;">Keine Nachrichten vorhanden.</p>
+				<p style="color: #666;">No messages found</p>
 			} else {
 				for _, msg := range messages {
 					if msg.SenderID == client.ContainerID {
@@ -239,7 +239,7 @@ templ chatVerlauf(messages []Message, client shared.ClientIdentity, selectedCont
 				}
 			}
 		</div>
-		<!-- Nachrichteneingabe -->
+		<!-- Messaging form -->
 		<form
 			hx-post="/chat/send"
 			hx-target="#chat-area"
@@ -255,7 +255,7 @@ templ chatVerlauf(messages []Message, client shared.ClientIdentity, selectedCont
 			<input
 				type="text"
 				name="message"
-				placeholder="Nachricht eingeben..."
+				placeholder="Enter your message here..."
 				required
 				autocomplete="off"
 				style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 20px; margin-right: 10px; outline: none;"
@@ -266,7 +266,7 @@ templ chatVerlauf(messages []Message, client shared.ClientIdentity, selectedCont
 				onmouseover="this.style.backgroundColor='#064940'"
 				onmouseout="this.style.backgroundColor='#075e54'"
 			>
-				Senden
+				Send
 			</button>
 		</form>
 	</div>
