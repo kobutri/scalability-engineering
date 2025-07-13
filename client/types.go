@@ -23,4 +23,6 @@ type ClientData struct {
 	Connected       bool
 	ConnectionError string
 	LastUpdate      string
+
+	QueryQueueItems []shared.Entry[int64, string]
 }

@@ -2,6 +2,7 @@ package shared
 
 import (
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 )
@@ -554,4 +555,23 @@ func (pq *PriorityQueue[P, V]) Stats() PriorityQueueStats {
 		HeapHeight: height,
 		IsValid:    pq.validateUnsafe(),
 	}
+}
+
+func (pq *PriorityQueue[P, V]) GetSortedEntries() []Entry[P, V] {
+	pq.mu.RLock()
+	defer pq.mu.RUnlock()
+
+	entries := make([]Entry[P, V], 0, len(pq.priorities))
+	for i := range pq.priorities {
+		entries = append(entries, Entry[P, V]{
+			Key:   pq.priorities[i], // Key = Priority
+			Value: pq.values[i],
+		})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Key < entries[j].Key
+	})
+
+	return entries
 }

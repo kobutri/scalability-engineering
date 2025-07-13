@@ -32,6 +32,8 @@ type Client struct {
 	queryQueue *shared.PriorityQueue[int64, string] // clients since last queried
 	startTime  time.Time
 
+	sequenceCounter int64
+
 	// Shared client manager handlers
 	clientManagerHandlers *shared.ClientManagerHandlers
 }
@@ -90,9 +92,13 @@ func NewClient(bootstrapURL string, autoConnect bool, retryInterval time.Duratio
 	}
 
 	// Set up callbacks to maintain queryQueue
-	config.PriorityQueueAddCallback = func(containerID string, priority int64) {
-		// Use -priority as key (negative priority for reverse order)
-		client.queryQueue.Insert(-priority, containerID)
+	// In NewClient():
+	config.PriorityQueueAddCallback = func(containerID string, _ int64) {
+		// Setze initial niedrige Priorität bei erstem Insert
+		if !client.queryQueue.Contains(containerID) {
+			client.sequenceCounter++
+			client.queryQueue.Insert(client.sequenceCounter, containerID)
+		}
 	}
 
 	config.PriorityQueueRemoveCallback = func(containerID string, priority int64) {
@@ -290,6 +296,9 @@ func (c *Client) getClientData() ClientData {
 		UptimeSeconds:   uptime.Seconds(),
 		UptimeFormatted: shared.FormatDuration(uptime),
 		CurrentTime:     time.Now().Format("15:04:05"),
+
+		QueryQueueItems: getSortedQueueEntries(c.queryQueue),
+
 		ClientManagerData: shared.ClientManagerData{
 			HashSetSize:       len(allClients),
 			PriorityQueueSize: len(queueItems),
@@ -783,7 +792,9 @@ func (c *Client) expandContacts() {
 
 	c.addNewContacts(receivedContacts)
 
-	c.queryQueue.Insert(-time.Now().UnixNano(), containerID) // Reinsert with current time as priority
+	// Reinsert with updated priority
+	c.sequenceCounter++
+	c.queryQueue.Insert(c.sequenceCounter, containerID)
 }
 
 // Routine Worker:
@@ -853,6 +864,18 @@ func (c *Client) GetContactsWithNames() []struct {
 	return result
 }
 
+func (c *Client) queryQueueHandler(w http.ResponseWriter, r *http.Request) {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	items := getSortedQueueEntries(c.queryQueue)
+	QueryQueueComponent(items).Render(r.Context(), w)
+}
+
+func getSortedQueueEntries(pq *shared.PriorityQueue[int64, string]) []shared.Entry[int64, string] {
+	return pq.GetSortedEntries()
+}
+
 // MAIN
 func main() {
 	InitiateDB()
@@ -913,6 +936,8 @@ func main() {
 	http.HandleFunc("/alive", client.aliveHandler)
 
 	http.HandleFunc("/contacts", client.contactsHandler)
+
+	http.HandleFunc("/query-queue", client.queryQueueHandler)
 
 	// Chat Endpoints - all namespaced under /chat/
 	http.HandleFunc("/chat/message", client.messageHandler)          // Receive messages

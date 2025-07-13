@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -495,8 +496,9 @@ func (cm *ClientManager) GetQueueItems() []QueueItem {
 			Timestamp: actualTime.Format("15:04:05"),
 			Age:       formatDuration(age),
 		}
-	}
 
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Priority < items[j].Priority })
 	return items
 }
 

@@ -41,7 +41,7 @@ templ ClientDashboard(data ClientData) {
 
 // Client content that updates dynamically
 templ ClientContent(data ClientData) {
-	<div id="status-content">
+	<div id="status-content" class="client-status-content">
 		<div class="grid">
 			<!-- Connection Control Panel -->
 			@ConnectionControlComponent(ConnectionControlData{
@@ -50,10 +50,50 @@ templ ClientContent(data ClientData) {
 				ConnectionError: data.ConnectionError,
 			})
 		</div>
-		<!-- Client Manager Component -->
-		<div class="client-manager" id="client-manager" hx-ext="morph">
-			@shared.ClientManagerComponent(data.ClientManagerData)
-		</div>
+
+		<!-- Section: Client Manager -->
+		<section id="client-manager-section" style="margin-bottom: 8px;">
+			<div class="client-manager" id="client-manager" hx-ext="morph">
+				@shared.ClientManagerComponent(data.ClientManagerData)
+			</div>
+		</section>
+
+		<!-- Section: Query Queue -->
+		<section id="query-queue-section" style="margin-bottom: 8px;">
+			<div class="query-queue-wrapper" style="margin-top: 0; clear: both;" hx-get="/query-queue" hx-trigger="every 5s" hx-swap="morph">
+				@QueryQueueComponent(data.QueryQueueItems)
+			</div>
+		</section>
+
+	</div>
+}
+
+
+templ QueryQueueComponent(items []shared.Entry[int64, string]) {
+	<div id="query-queue" class="query-queue-section" style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+		<h2 style="margin-bottom: 1rem; color: #333;">Query Queue</h2>
+		if len(items) > 0 {
+			<table style="width: 100%; border-collapse: collapse;">
+				<thead>
+					<tr style="border-bottom: 2px solid #ddd;">
+						<th style="text-align: left; padding: 8px;">#</th>
+						<th style="text-align: left; padding: 8px;">Container ID</th>
+						<th style="text-align: left; padding: 8px;">Priority</th>
+					</tr>
+				</thead>
+				<tbody>
+					for i, item := range items {
+						<tr data-container-id={item.Value} id={"query-row-" + item.Value} style="border-bottom: 1px solid #eee;">
+							<td style="padding: 8px;">{ i }</td>
+							<td style="padding: 8px;">{ item.Value }</td>
+							<td style="padding: 8px;">{ item.Key }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		} else {
+			<p style="color: #666; font-style: italic;">Die Query Queue ist leer.</p>
+		}
 	</div>
 }
 
