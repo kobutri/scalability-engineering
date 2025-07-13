@@ -399,12 +399,12 @@ func (c *Client) aliveHandler(w http.ResponseWriter, r *http.Request) {
 
 func (c *Client) messageHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("messageHandler called")
-	// CORS-Preflight
+
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	// Nur POST erlauben
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "only POST allowed", http.StatusMethodNotAllowed)
 		return
@@ -416,13 +416,13 @@ func (c *Client) messageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validierung der erforderlichen Felder
+	// validate
 	if msg.SenderID == "" || msg.MessageID == "" || msg.Message == "" {
 		http.Error(w, "senderID, messageID and message are required", http.StatusBadRequest)
 		return
 	}
 
-	// Setze Standardwerte falls nicht vorhanden
+	// set standard value
 	if msg.Timestamp == "" {
 		msg.Timestamp = time.Now().Format(time.RFC3339)
 	}
@@ -430,7 +430,7 @@ func (c *Client) messageHandler(w http.ResponseWriter, r *http.Request) {
 		msg.Status = "received"
 	}
 
-	// Nachricht speichern
+	// Save message
 	if err := RcvMessage(msg); err != nil {
 		log.Printf("Failed to store message: %v", err)
 		http.Error(w, fmt.Sprintf("failed to store message: %v", err), http.StatusInternalServerError)
@@ -443,7 +443,7 @@ func (c *Client) messageHandler(w http.ResponseWriter, r *http.Request) {
 
 func (c *Client) chatDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
-	// Für jeden Kontakt die zugehörigen Nachrichten holen
+	// Get messages for all contacts
 	contactMessages, err := c.GetAllContactMessages()
 
 	if err != nil {
@@ -452,21 +452,20 @@ func (c *Client) chatDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	}
 
-	log.Println("Konatkte und Nachrichten:", contactMessages)
+	log.Println("Contacts and messages:", contactMessages)
 	chatDashboard(contactMessages, c.identity).Render(r.Context(), w)
 }
 
-// GetContactsFromQueue gibt alle Kontakte aus der PriorityQueue zurück
+// GetContactsFromQueue returns all contacts from priority queue
 func (c *Client) GetContactsFromQueue() []shared.ClientIdentity {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	// Hole alle ContainerIDs aus der PriorityQueue
 	_, containerIDs := c.queryQueue.ToSlices()
 
 	var contacts []shared.ClientIdentity
 
-	// Für jede ContainerID den entsprechenden Client finden
+	// find corresponding
 	for _, containerID := range containerIDs {
 		if client, exists := c.clientManager.GetClient(containerID); exists {
 			contacts = append(contacts, client)
@@ -476,7 +475,7 @@ func (c *Client) GetContactsFromQueue() []shared.ClientIdentity {
 	return contacts
 }
 
-func (c *Client) chatVerlaufHandler(w http.ResponseWriter, r *http.Request) {
+func (c *Client) chatHistoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Parse selected contact from form
 	if err := r.ParseForm(); err != nil {
@@ -501,8 +500,8 @@ func (c *Client) chatVerlaufHandler(w http.ResponseWriter, r *http.Request) {
 	// Get the contact name for display
 	contactName := c.GetContactName(selectedContact)
 
-	log.Printf("Verlauf mit %s (%d messages)", contactName, len(messages))
-	chatVerlauf(messages, c.identity, selectedContact, contactName).Render(r.Context(), w)
+	log.Printf("History with %s (%d messages)", contactName, len(messages))
+	chatHistory(messages, c.identity, selectedContact, contactName).Render(r.Context(), w)
 }
 
 func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
@@ -603,7 +602,7 @@ func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 	// Get the contact name for display
 	contactName := c.GetContactName(targetContainerID)
 
-	chatVerlauf(messages, c.identity, targetContainerID, contactName).Render(r.Context(), w)
+	chatHistory(messages, c.identity, targetContainerID, contactName).Render(r.Context(), w)
 }
 
 type ContactMessages struct {
@@ -813,8 +812,6 @@ func (c *Client) contactExpansionWorker(interval time.Duration) {
 	}
 }
 
-// HTMX Chat Namespace Endpoints
-
 // Returns the contact list partial for periodic updates
 func (c *Client) chatContactsHandler(w http.ResponseWriter, r *http.Request) {
 	contactMessages, err := c.GetAllContactMessages()
@@ -936,13 +933,12 @@ func main() {
 	http.HandleFunc("/alive", client.aliveHandler)
 
 	http.HandleFunc("/contacts", client.contactsHandler)
-
 	http.HandleFunc("/query-queue", client.queryQueueHandler)
 
 	// Chat Endpoints - all namespaced under /chat/
 	http.HandleFunc("/chat/message", client.messageHandler)          // Receive messages
 	http.HandleFunc("/chat/dashboard", client.chatDashboardHandler)  // Show chat dashboard
-	http.HandleFunc("/chat/conversation", client.chatVerlaufHandler) // Show chat conversation
+	http.HandleFunc("/chat/conversation", client.chatHistoryHandler) // Show chat conversation
 	http.HandleFunc("/chat/send", client.sendMessageHandler)         // Send messages
 	http.HandleFunc("/chat/contacts", client.chatContactsHandler)    // Contact list partial
 

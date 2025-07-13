@@ -41,7 +41,7 @@ func ClientDashboard(data ClientData) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(data.ServiceName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 14, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 14, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -62,7 +62,7 @@ func ClientDashboard(data ClientData) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(data.ServiceName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 23, Col: 50}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 23, Col: 50}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -195,7 +195,7 @@ func QueryQueueComponent(items []shared.Entry[int64, string]) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(item.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 86, Col: 39}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 86, Col: 39}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -208,7 +208,7 @@ func QueryQueueComponent(items []shared.Entry[int64, string]) templ.Component {
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs("query-row-" + item.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 86, Col: 70}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 86, Col: 70}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -221,7 +221,7 @@ func QueryQueueComponent(items []shared.Entry[int64, string]) templ.Component {
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(i)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 87, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 87, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -234,7 +234,7 @@ func QueryQueueComponent(items []shared.Entry[int64, string]) templ.Component {
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(item.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 88, Col: 45}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 88, Col: 45}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
@@ -247,7 +247,7 @@ func QueryQueueComponent(items []shared.Entry[int64, string]) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(item.Key)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 89, Col: 43}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 89, Col: 43}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -263,7 +263,7 @@ func QueryQueueComponent(items []shared.Entry[int64, string]) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<p style=\"color: #666; font-style: italic;\">Die Query Queue ist leer.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<p style=\"color: #666; font-style: italic;\">The Query Queue is empty.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -276,7 +276,7 @@ func QueryQueueComponent(items []shared.Entry[int64, string]) templ.Component {
 	})
 }
 
-// / Dashboard mit Kontaktliste (nur Namen anzeigen) und Chatverlauf
+// / Dashboard with contact list
 func chatDashboard(contacts []ContactMessages, client shared.ClientIdentity) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -305,7 +305,7 @@ func chatDashboard(contacts []ContactMessages, client shared.ClientIdentity) tem
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(client.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 107, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 107, Col: 40}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -318,7 +318,7 @@ func chatDashboard(contacts []ContactMessages, client shared.ClientIdentity) tem
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(client.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 117, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 117, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -374,7 +374,7 @@ func contactListPartial(contacts []ContactMessages, selectedContactID string) te
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs("/chat/conversation?selected_contact=" + contact.Contact + "&client_name=" + contact.Contact)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 154, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 154, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -387,7 +387,7 @@ func contactListPartial(contacts []ContactMessages, selectedContactID string) te
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(contact.ContactName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 161, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 161, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
@@ -405,7 +405,7 @@ func contactListPartial(contacts []ContactMessages, selectedContactID string) te
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(contact.Messages[len(contact.Messages)-1].Message)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 164, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 164, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 				if templ_7745c5c3_Err != nil {
@@ -468,7 +468,7 @@ func chatMessages(contact string, userName string, contacts []ContactMessages) t
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(userName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 182, Col: 30}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 182, Col: 30}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
@@ -481,7 +481,7 @@ func chatMessages(contact string, userName string, contacts []ContactMessages) t
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(contact)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 182, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 182, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 		if templ_7745c5c3_Err != nil {
@@ -502,7 +502,7 @@ func chatMessages(contact string, userName string, contacts []ContactMessages) t
 						var templ_7745c5c3_Var21 string
 						templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Timestamp)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 189, Col: 30}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 189, Col: 30}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 						if templ_7745c5c3_Err != nil {
@@ -515,7 +515,7 @@ func chatMessages(contact string, userName string, contacts []ContactMessages) t
 						var templ_7745c5c3_Var22 string
 						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(msg.SenderID)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 189, Col: 49}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 189, Col: 49}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 						if templ_7745c5c3_Err != nil {
@@ -528,7 +528,7 @@ func chatMessages(contact string, userName string, contacts []ContactMessages) t
 						var templ_7745c5c3_Var23 string
 						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(msg.ReceiverID)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 189, Col: 72}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 189, Col: 72}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 						if templ_7745c5c3_Err != nil {
@@ -541,7 +541,7 @@ func chatMessages(contact string, userName string, contacts []ContactMessages) t
 						var templ_7745c5c3_Var24 string
 						templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Message)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 190, Col: 24}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 190, Col: 24}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 						if templ_7745c5c3_Err != nil {
@@ -563,8 +563,8 @@ func chatMessages(contact string, userName string, contacts []ContactMessages) t
 	})
 }
 
-// Dashboard mit Kontaktliste (nur Namen anzeigen) und Chatverlauf (zeigt rechts alle Nachrichten aus messages)
-func chatVerlauf(messages []Message, client shared.ClientIdentity, selectedContact string, contactName string) templ.Component {
+// Dashboard with contact list (displaying names only) and chat history (showing all messages from messages on the right)
+func chatHistory(messages []Message, client shared.ClientIdentity, selectedContact string, contactName string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -592,7 +592,7 @@ func chatVerlauf(messages []Message, client shared.ClientIdentity, selectedConta
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs("/chat/conversation?selected_contact=" + selectedContact + "&client_name=" + client.ContainerID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 207, Col: 106}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 207, Col: 106}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {
@@ -605,7 +605,7 @@ func chatVerlauf(messages []Message, client shared.ClientIdentity, selectedConta
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(contactName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 214, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 214, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -630,7 +630,7 @@ func chatVerlauf(messages []Message, client shared.ClientIdentity, selectedConta
 					var templ_7745c5c3_Var28 string
 					templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Message)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 226, Col: 26}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 226, Col: 26}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 					if templ_7745c5c3_Err != nil {
@@ -643,7 +643,7 @@ func chatVerlauf(messages []Message, client shared.ClientIdentity, selectedConta
 					var templ_7745c5c3_Var29 string
 					templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Timestamp)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 227, Col: 102}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 227, Col: 102}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 					if templ_7745c5c3_Err != nil {
@@ -661,7 +661,7 @@ func chatVerlauf(messages []Message, client shared.ClientIdentity, selectedConta
 					var templ_7745c5c3_Var30 string
 					templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Message)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 234, Col: 26}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 234, Col: 26}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 					if templ_7745c5c3_Err != nil {
@@ -674,7 +674,7 @@ func chatVerlauf(messages []Message, client shared.ClientIdentity, selectedConta
 					var templ_7745c5c3_Var31 string
 					templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Timestamp)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 235, Col: 83}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 235, Col: 83}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 					if templ_7745c5c3_Err != nil {
@@ -694,7 +694,7 @@ func chatVerlauf(messages []Message, client shared.ClientIdentity, selectedConta
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(selectedContact)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 253, Col: 27}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `client/dashboard.templ`, Line: 253, Col: 27}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {

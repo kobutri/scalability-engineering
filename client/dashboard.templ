@@ -92,12 +92,12 @@ templ QueryQueueComponent(items []shared.Entry[int64, string]) {
 				</tbody>
 			</table>
 		} else {
-			<p style="color: #666; font-style: italic;">Die Query Queue ist leer.</p>
+			<p style="color: #666; font-style: italic;">The Query Queue is empty.</p>
 		}
 	</div>
 }
 
-/// Dashboard mit Kontaktliste (nur Namen anzeigen) und Chatverlauf
+/// Dashboard with contact list
 templ chatDashboard(contacts []ContactMessages, client shared.ClientIdentity) {
 	<!DOCTYPE html>
 	<html lang="en">
@@ -197,8 +197,8 @@ templ chatMessages(contact string, userName string, contacts []ContactMessages) 
 	</div>
 }
 
-// Dashboard mit Kontaktliste (nur Namen anzeigen) und Chatverlauf (zeigt rechts alle Nachrichten aus messages)
-templ chatVerlauf(messages []Message, client shared.ClientIdentity, selectedContact string, contactName string) {
+// Dashboard with contact list (displaying names only) and chat history (showing all messages from messages on the right)
+templ chatHistory(messages []Message, client shared.ClientIdentity, selectedContact string, contactName string) {
 	<!-- Main Chat Area for HTMX replacement -->
 	<div
 		id="chat-area"

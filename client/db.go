@@ -7,7 +7,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Neue Tabellenstruktur
+// New table structure
 func InitiateDB() {
 	db, err := sql.Open("sqlite", "./chats.db")
 	if err != nil {
@@ -24,7 +24,7 @@ func InitiateDB() {
 		log.Fatal("FAILED TO CREATE CONTACT TABLE", err)
 	}
 
-	// Message-Tabelle: Nachrichten mit Sender- und Empfänger-IDs
+	// message table
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS Message (
 		messageID TEXT PRIMARY KEY,
 		timestamp DATETIME NOT NULL,
@@ -38,7 +38,7 @@ func InitiateDB() {
 	}
 }
 
-// Kontakt hinzufügen
+// add contact
 func AddContact(contact Contact) error {
 	db, err := sql.Open("sqlite", "./chats.db")
 	if err != nil {
@@ -50,7 +50,7 @@ func AddContact(contact Contact) error {
 	return err
 }
 
-// Nachricht speichern
+// save message
 func RcvMessage(msg Message) error {
 	db, err := sql.Open("sqlite", "./chats.db")
 	if err != nil {
@@ -65,7 +65,7 @@ func RcvMessage(msg Message) error {
 	return err
 }
 
-// Nachrichtenverlauf mit Kontakt holen (über Container IDs)
+// get chat history
 func GetChatWithContact(myID, contactID string) ([]Message, error) {
 	db, err := sql.Open("sqlite", "./chats.db")
 	if err != nil {
@@ -100,7 +100,6 @@ func GetChatWithContact(myID, contactID string) ([]Message, error) {
 	return messages, nil
 }
 
-// Strukturen
 type Contact struct {
 	ContainerID string
 	Name        string
@@ -131,7 +130,6 @@ type ContactWithLastMessage struct {
 }
 
 // GetContactsWithLastMessage gets all contacts from database with their most recent message
-// This is much more efficient than getting all contacts and then fetching all messages for each
 func GetContactsWithLastMessage(myID string) ([]ContactWithLastMessage, error) {
 	db, err := sql.Open("sqlite", "./chats.db")
 	if err != nil {
@@ -140,7 +138,6 @@ func GetContactsWithLastMessage(myID string) ([]ContactWithLastMessage, error) {
 	defer db.Close()
 
 	// Query to get all contacts with their most recent message
-	// Uses a LEFT JOIN with a subquery to get the most recent message for each contact
 	query := `
 		SELECT 
 			c.containerID,
