@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"sort"
@@ -18,6 +19,24 @@ import (
 
 	"shared"
 )
+
+var globalHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		MaxIdleConns:        1000,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     1000,
+		IdleConnTimeout:     90 * time.Second,
+		DisableKeepAlives:   false,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+	Timeout: 30 * time.Second,
+}
 
 // BenchmarkConfig holds the configuration for the benchmark
 type BenchmarkConfig struct {
@@ -223,31 +242,20 @@ func (bt *BenchmarkTool) setRunning(running bool) {
 func (bt *BenchmarkTool) worker(ctx context.Context) {
 	defer bt.workerWG.Done()
 
-	// Each worker has its own HTTP client for better connection pooling
-	client := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        300,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     30 * time.Second,
-			DisableKeepAlives:   false,
-		},
-		Timeout: 10 * time.Second,
-	}
+	client := globalHTTPClient
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			// Try to get work
+			// Try to get work using CAS
 			current := atomic.LoadInt64(&bt.workCounter)
 			if current > 0 && atomic.CompareAndSwapInt64(&bt.workCounter, current, current-1) {
-				bt.performWork(client)
-			}
-			if atomic.AddInt64(&bt.workCounter, -1) >= 0 {
-				// Got work, perform it
+				// Successfully claimed work, perform it
 				bt.performWork(client)
 			} else {
+				// No work available, wait for signal
 				bt.workMutex.Lock()
 				bt.workCond.Wait()
 				bt.workMutex.Unlock()
@@ -446,6 +454,7 @@ func (bt *BenchmarkTool) connectToBootstrap(client *http.Client, bootstrapURL st
 		}
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Connection", "keep-alive")
 
 	resp, err := client.Do(req)
 	requestDuration := time.Since(start)
@@ -472,6 +481,10 @@ func (bt *BenchmarkTool) connectToBootstrap(client *http.Client, bootstrapURL st
 		}
 	}
 
+	// After connect request
+	log.Printf("DEBUG: HTTP/%s, Status: %d, Connection: %s, Content-Length: %s",
+		resp.Proto, resp.StatusCode, resp.Header.Get("Connection"), resp.Header.Get("Content-Length"))
+
 	return OperationResult{
 		Success:   true,
 		Duration:  requestDuration,
@@ -497,6 +510,7 @@ func (bt *BenchmarkTool) disconnectFromBootstrap(client *http.Client, bootstrapU
 		}
 	}
 	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("Connection", "keep-alive")
 
 	resp, err := client.Do(req)
 	requestDuration := time.Since(start)
@@ -523,6 +537,10 @@ func (bt *BenchmarkTool) disconnectFromBootstrap(client *http.Client, bootstrapU
 		}
 	}
 
+	// After disconnect request
+	// log.Printf("DEBUG: HTTP/%s, Status: %d, Connection: %s, Content-Length: %s",
+	// 	resp.Proto, resp.StatusCode, resp.Header.Get("Connection"), resp.Header.Get("Content-Length"))
+
 	return OperationResult{
 		Success:   true,
 		Duration:  requestDuration,
@@ -540,7 +558,6 @@ func (bt *BenchmarkTool) Start() error {
 	bt.setRunning(true)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Use configured worker count (no auto-scaling needed with this simpler architecture)
 	workerCount := bt.config.WorkerCount

@@ -39,9 +39,6 @@ services:
       - METRICS_INTERVAL=1s
       - LATENCY_BUFFER_SIZE=1000
       - PORT=8090
-    depends_on:
-      bootstrap:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/alive"]
       interval: 30s
