@@ -74,6 +74,7 @@ cd benchmark
 - `POST /add-client` - Create a new Docker client container
 - `POST /remove-client` - Remove a client container
 - `POST /bulk-create-clients` - Create multiple clients at once
+- `GET /chat/dashboard` - Chat Interface
 
 ## Configuration
 
@@ -127,25 +128,31 @@ MAX_CLIENTS=500 THROTTLE_OPS=50 ./run.sh
 
 ```
 scalability-engineering/
-├── bootstrap/          # Main bootstrap server
-│   ├── main.go        # Server implementation
-│   ├── hashset.go     # Thread-safe set data structure
-│   ├── priority_queue.go # Priority queue for time-based operations
-│   └── docker_client.go # Docker container management
-├── client/            # Example client implementation
-│   ├── main.go       # Client with web UI
-│   └── client.templ  # Client dashboard template
-├── benchmark/         # Benchmark tool
-│   ├── main.go       # Benchmark implementation
-│   ├── handlers.go   # HTTP handlers
-│   ├── dashboard.templ # Dashboard template
-│   ├── run.sh        # Run script
-│   └── README.md     # Benchmark documentation
-├── shared/           # Shared components
-│   ├── client_manager.go # Client management
-│   ├── hashset.go    # Thread-safe data structures
-│   └── priority_queue.go # Priority queue implementation
-└── data/             # Persistent storage directory
+├── bootstrap/                          # Main bootstrap server
+│   ├── main.go                         # Server implementation
+│   ├── hashset.go                      # Thread-safe set data structure
+│   ├── priority_queue.go               # Priority queue for time-based operations
+│   ├── dashboard.templ                 # htmx template for the bootstrap dashboard components
+│   └── docker_client.go                # Docker container management
+├── client/                             # Example client implementation
+│   ├── main.go                         # Client with web UI
+│   ├── connection_control.templ        # Control buttons for connection / disconnecting the client
+│   ├── dashboard.templ                 # Dashboard components for the client UI
+│   ├── db.go                           # Chat implementation
+│   └── client.templ                    # Client dashboard template
+├── benchmark/                          # Benchmark tool
+│   ├── main.go                         # Benchmark implementation
+│   ├── handlers.go                     # HTTP handlers
+│   ├── dashboard.templ                 # Dashboard template
+│   ├── run.sh                          # Run script
+│   └── README.md                       # Benchmark documentation
+├── shared/                             # Shared components
+│   ├── client_manager.go               # Client management
+│   ├── hashset.go                      # Thread-safe data structures
+│   ├── client_manager_component.templ  # Shared UI components
+│   ├── client_manager_handlers.go      # Handler functions for the client manager
+│   └── priority_queue.go               # Priority queue implementation
+└── data/                               # Persistent storage directory
 ```
 
 ## Usage Examples
@@ -180,6 +187,8 @@ docker run -p 8090:8090 \
   -e BOOTSTRAP_URL=http://host.docker.internal:8080 \
   bootstrap-benchmark
 ```
+
+### 
 
 ## Development
 
@@ -227,8 +236,5 @@ This implementation is provided as-is for educational and practical use.
 
 1) **Managed State:** Chat Messages, Registered ClientIdentities, QueryQueues, Live Data
 2) **Scale vertically and horizontally:** Network scales with additional peers, Bootstrap Server can limit the  amount of requests per second
-3) **No Overloading at full scale:**
-4) **Additional Strategies:** 
-- Sharding 
-- Priority Queue 
-- Replication
+3) **No Overloading at full scale:** 
+4) **Additional Strategies:** **Sharding** (peers store their own chat messages, clientIdentities, queues etc.), **Priority Queue** (checking for alive peers and only using them for requests via the query queue), **Replication** (clientIdentities can be obtained through other peers), **Eventual Consistency** (All peers will eventually get to know all the other peers in the network, through the queryQueue and the expansionHandler())
