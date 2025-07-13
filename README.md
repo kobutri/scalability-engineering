@@ -29,21 +29,8 @@ docker-compose up
 
 Access the web interface at `http://localhost:8080/status-page`
 
-### Start with Benchmark Tool
-
-```bash
-# Start bootstrap server and benchmark tool
-docker-compose --profile benchmark up
-```
-
 Access the benchmark dashboard at `http://localhost:8090`
 
-### Development Mode
-
-```bash
-# Start with hot reloading
-./dev.sh
-```
 
 ### Manual Setup
 
@@ -55,10 +42,6 @@ go run .
 # In another terminal, start a client
 cd client
 CLIENT_NAME=my-client go run .
-
-# In another terminal, start the benchmark tool
-cd benchmark
-./run.sh
 ```
 
 ## API Endpoints
@@ -200,8 +183,8 @@ This implementation is provided as-is for educational and practical use.
 1) **Managed State:** Chat Messages, Registered ClientIdentities, QueryQueues, Live Data
 2) **Scale vertically and horizontally:** Network scales with additional peers, Bootstrap Server can limit the  amount of requests per second
 3) **No Overloading at full scale:** Once a client is registered, the bootstrap server no longer needs to be involved in contact establishment. Clients only share a controlled number of peer contacts with each other. Alive requests to the Bootstrap Server are also limited.
-4) **Additional Strategies:** 
-**Sharding** (peers store their own chat messages, clientIdentities, queues etc.), 
-**Priority Queue** (checking for alive peers and only using them for requests via the query queue), 
-**Replication** (clientIdentities can be obtained through other peers), 
-**Eventual Consistency** (All peers will eventually get to know all the other peers in the network, through the queryQueue and the expansionHandler())
+4) **Additional Strategies:**   
+**Sharding** (peers store their own chat messages, clientIdentities, queues etc.),   
+**Priority Queue** (checking for alive peers and only using them for requests via the query queue),   
+**Replication** (clientIdentities can be obtained through other peers),    
+**Eventual Consistency** (All peers will eventually get to know all the other peers in the network, through the queryQueue and the expansionHandler()). 
