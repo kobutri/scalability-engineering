@@ -222,3 +222,13 @@ The benchmark tool provides:
 ## License
 
 This implementation is provided as-is for educational and practical use. 
+
+## Prototyping Requirements
+
+1) **Managed State:** Chat Messages, Registered ClientIdentities, QueryQueues, Live Data
+2) **Scale vertically and horizontally:** Network scales with additional peers, Bootstrap Server can limit the  amount of requests per second
+3) **No Overloading at full scale:**
+4) **Additional Strategies:** 
+- Sharding 
+- Priority Queue 
+- Replication
