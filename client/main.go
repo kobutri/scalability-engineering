@@ -53,11 +53,13 @@ func DiscoverClientIdentity() shared.ClientIdentity {
 		}
 	}
 
-	// Get container ID from hostname (Docker sets hostname to container ID)
+	// Get container ID and hostname from hostname (Docker sets hostname to container ID)
 	if hostname, err := os.Hostname(); err == nil {
 		identity.ContainerID = hostname
+		identity.Hostname = hostname // For inter-container communication
 	} else {
 		identity.ContainerID = "unknown"
+		identity.Hostname = "unknown"
 	}
 
 	return identity
@@ -66,8 +68,8 @@ func DiscoverClientIdentity() shared.ClientIdentity {
 func NewClient(bootstrapURL string, autoConnect bool, retryInterval time.Duration, maxRetries int) *Client {
 	identity := DiscoverClientIdentity()
 
-	log.Printf("Discovered client identity: Name='%s', ContainerID='%s'",
-		identity.Name, identity.ContainerID)
+	log.Printf("Discovered client identity: Name='%s', ContainerID='%s', Hostname='%s'",
+		identity.Name, identity.ContainerID, identity.Hostname)
 
 	// Create client manager with persistence
 	config := shared.DefaultClientManagerConfig()
@@ -270,12 +272,13 @@ func (c *Client) getClientData() ClientData {
 	queueItems := c.clientManager.GetQueueItems()
 	config := c.clientManager.GetConfig()
 
-	// Convert client identities to entries format
-	clientEntries := make([]shared.Entry[string, string], len(allClients))
+	// Convert client identities to ClientEntry format
+	clientEntries := make([]shared.ClientEntry, len(allClients))
 	for i, client := range allClients {
-		clientEntries[i] = shared.Entry[string, string]{
-			Key:   client.ContainerID,
-			Value: client.Name,
+		clientEntries[i] = shared.ClientEntry{
+			ContainerID: client.ContainerID,
+			Name:        client.Name,
+			Hostname:    client.Hostname,
 		}
 	}
 
@@ -509,6 +512,19 @@ func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get target client to access hostname
+	targetClient, exists := c.clientManager.GetClient(targetContainerID)
+	if !exists {
+		http.Error(w, "Target client not found", http.StatusBadRequest)
+		return
+	}
+
+	// Use hostname for inter-container communication
+	if targetClient.Hostname == "" {
+		http.Error(w, "Target client hostname not available", http.StatusBadRequest)
+		return
+	}
+
 	// Nachricht mit automatisch generierten Feldern erstellen
 	msgID := generateMessageID()
 	timestamp := time.Now().Format(time.RFC3339)
@@ -529,10 +545,10 @@ func (c *Client) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use target container ID directly for HTTP request with namespaced endpoint
-	targetURL := fmt.Sprintf("http://%s:9090/chat/message", targetContainerID)
+	// Use target hostname for HTTP request with namespaced endpoint
+	targetURL := fmt.Sprintf("http://%s:9090/chat/message", targetClient.Hostname)
 
-	log.Printf("Sending message to %s: %s", targetContainerID, sendMsg.Message)
+	log.Printf("Sending message to %s (hostname: %s): %s", targetContainerID, targetClient.Hostname, sendMsg.Message)
 
 	// Send message synchronously first
 	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
@@ -718,6 +734,19 @@ func (c *Client) expandContacts() {
 		return
 	}
 
+	// Get target client to access hostname
+	targetClient, exists := c.clientManager.GetClient(containerID)
+	if !exists {
+		log.Printf("Target client %s not found in client manager", containerID)
+		return
+	}
+
+	// Use hostname for inter-container communication
+	if targetClient.Hostname == "" {
+		log.Printf("Target client %s has no hostname available", containerID)
+		return
+	}
+
 	// Get a random subset of current clients to send
 	randomSubset := c.clientManager.GetRandomSubset()
 
@@ -731,17 +760,17 @@ func (c *Client) expandContacts() {
 		return
 	}
 
-	// Make POST request to the client's contacts endpoint
-	targetURL := fmt.Sprintf("http://%s:9090/contacts", containerID)
+	// Make POST request to the client's contacts endpoint using hostname
+	targetURL := fmt.Sprintf("http://%s:9090/contacts", targetClient.Hostname)
 	resp, err := http.Post(targetURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Printf("Failed to query contacts from %s: %v", containerID, err)
+		log.Printf("Failed to query contacts from %s (hostname: %s): %v", containerID, targetClient.Hostname, err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Contacts query to %s returned status %d", containerID, resp.StatusCode)
+		log.Printf("Contacts query to %s (hostname: %s) returned status %d", containerID, targetClient.Hostname, resp.StatusCode)
 		return
 	}
 

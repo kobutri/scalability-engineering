@@ -142,6 +142,7 @@ func (h *ClientManagerHandlers) addClientHandler(w http.ResponseWriter, r *http.
 
 	containerID := r.FormValue("container_id")
 	name := r.FormValue("name")
+	hostname := r.FormValue("hostname")
 
 	if containerID == "" || name == "" {
 		http.Error(w, "Container ID and name are required", http.StatusBadRequest)
@@ -151,6 +152,7 @@ func (h *ClientManagerHandlers) addClientHandler(w http.ResponseWriter, r *http.
 	identity := ClientIdentity{
 		ContainerID: containerID,
 		Name:        name,
+		Hostname:    hostname,
 	}
 
 	h.clientManager.AddClient(identity)
@@ -245,12 +247,13 @@ func (h *ClientManagerHandlers) renderClientManagerComponent(w http.ResponseWrit
 	queueItems := h.clientManager.GetQueueItems()
 	config := h.clientManager.GetConfig()
 
-	// Convert client identities to entries format
-	clientEntries := make([]Entry[string, string], len(allClients))
+	// Convert client identities to ClientEntry format
+	clientEntries := make([]ClientEntry, len(allClients))
 	for i, client := range allClients {
-		clientEntries[i] = Entry[string, string]{
-			Key:   client.ContainerID,
-			Value: client.Name,
+		clientEntries[i] = ClientEntry{
+			ContainerID: client.ContainerID,
+			Name:        client.Name,
+			Hostname:    client.Hostname,
 		}
 	}
 

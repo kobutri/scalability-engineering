@@ -1,0 +1,53 @@
+services:
+  bootstrap:
+    build:
+      context: ..
+      dockerfile: ./bootstrap/Dockerfile
+    ports:
+      - "8080:8080"
+    container_name: bootstrap-server
+    environment:
+      - ENV=production
+      - DATA_DIR=/data
+      - SUBSET_SIZE=5
+      - HEALTH_TIMEOUT=2s
+      - MAX_AGE=30s
+      - MIN_AGE=5s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../docker-compose.yml:/docker-compose.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+      interval: 30s
+
+  benchmark:
+    build:
+      context: ..
+      dockerfile: ./benchmark/Dockerfile
+    ports:
+      - "8090:8090"
+    container_name: benchmark-tool
+    hostname: benchmark-tool
+    environment:
+      - MAX_CLIENTS=100
+      - THROTTLE_OPS=10
+      - BOOTSTRAP_URL=http://bootstrap:8080
+      - WORKER_COUNT=10
+      - METRICS_INTERVAL=1s
+      - LATENCY_BUFFER_SIZE=1000
+      - PORT=8090
+    depends_on:
+      bootstrap:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/alive"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  bootstrap_data: 

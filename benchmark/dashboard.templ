@@ -1,0 +1,690 @@
+package main
+
+import (
+	"fmt"
+)
+
+const morphSwap = "morph:{ignoreActiveValue:true,morphStyle:'innerHTML'}"
+
+templ BenchmarkDashboard(data *BenchmarkData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Bootstrap Benchmark Tool</title>
+			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.5/dist/htmx.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.3/dist/idiomorph-ext.js"></script>
+			<script src="https://unpkg.com/htmx-ext-json-enc@2.0.1/json-enc.js"></script>
+			<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+			@benchmarkStyles()
+		</head>
+		<body>
+			<div class="container">
+				<div class="header">
+					<h1>Bootstrap Benchmark Tool</h1>
+					<div class="service-info">
+						<div class="service-name">{ data.ServiceName }</div>
+						<div class="uptime">Uptime: { data.UptimeFormatted }</div>
+						<div class="current-time">{ data.CurrentTime }</div>
+					</div>
+				</div>
+				
+				<div class="dashboard-content">
+					<div class="main-panels">
+						<!-- Control Panel -->
+						<div class="panel-section">
+							@BenchmarkControlPanel(data)
+						</div>
+						
+						<!-- Metrics Panel -->
+						<div class="panel-section">
+							@BenchmarkMetricsPanel(data)
+						</div>
+						
+						<!-- Configuration Panel -->
+						<div class="panel-section">
+							@BenchmarkConfigPanel(data)
+						</div>
+						
+						<!-- Graphs Section -->
+						<div class="graphs-section">
+							<h2>Performance Metrics</h2>
+							<div class="graph-grid">
+															<div class="graph-container">
+								<h3>Throughput (Operations/Second)</h3>
+								<div class="graph-content">
+									<canvas id="throughput-canvas"></canvas>
+								</div>
+							</div>
+							
+							<div class="graph-container">
+								<h3>Error Rate (%)</h3>
+								<div class="graph-content">
+									<canvas id="error-canvas"></canvas>
+								</div>
+							</div>
+							
+							<div class="graph-container">
+								<h3>P99 Latency (ms)</h3>
+								<div class="graph-content">
+									<canvas id="latency-canvas"></canvas>
+								</div>
+							</div>
+							</div>
+						</div>
+						
+						<!-- Clients Panel -->
+						<div class="graphs-section">
+							@BenchmarkClientsPanel(data)
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<script>
+				// Global chart variables
+				let throughputChart, latencyChart, errorChart;
+
+				// Initialize charts on page load
+				document.addEventListener('DOMContentLoaded', function() {
+					// Initialize throughput chart
+					const throughputCtx = document.getElementById('throughput-canvas').getContext('2d');
+					throughputChart = new Chart(throughputCtx, {
+						type: 'line',
+						data: {
+							labels: [],
+							datasets: [{
+								label: 'Actual OPS',
+								data: [],
+								borderColor: '#4CAF50',
+								backgroundColor: 'rgba(76, 175, 80, 0.1)',
+								borderWidth: 2,
+								fill: false,
+								tension: 0.1
+							}, {
+								label: 'Expected OPS',
+								data: [],
+								borderColor: '#e0e0e0',
+								borderDash: [5, 5],
+								borderWidth: 1,
+								fill: false,
+								pointRadius: 0
+							}]
+						},
+						options: {
+							responsive: true,
+							maintainAspectRatio: false,
+							animation: {
+								duration: 750
+							},
+							scales: {
+								y: {
+									beginAtZero: true,
+									title: {
+										display: true,
+										text: 'Operations/Second'
+									}
+								},
+								x: {
+									title: {
+										display: true,
+										text: 'Time'
+									}
+								}
+							},
+							plugins: {
+								legend: {
+									position: 'top'
+								}
+							}
+						}
+					});
+
+					// Initialize latency chart
+					const latencyCtx = document.getElementById('latency-canvas').getContext('2d');
+					latencyChart = new Chart(latencyCtx, {
+						type: 'line',
+						data: {
+							labels: [],
+							datasets: [{
+								label: 'P99 Latency',
+								data: [],
+								borderColor: '#FF9800',
+								backgroundColor: 'rgba(255, 152, 0, 0.1)',
+								borderWidth: 2,
+								fill: false,
+								tension: 0.1
+							}]
+						},
+						options: {
+							responsive: true,
+							maintainAspectRatio: false,
+							animation: {
+								duration: 750
+							},
+							scales: {
+								y: {
+									beginAtZero: true,
+									title: {
+										display: true,
+										text: 'Milliseconds'
+									}
+								},
+								x: {
+									title: {
+										display: true,
+										text: 'Time'
+									}
+								}
+							},
+							plugins: {
+								legend: {
+									position: 'top'
+								}
+							}
+						}
+					});
+
+					// Initialize error chart
+					const errorCtx = document.getElementById('error-canvas').getContext('2d');
+					errorChart = new Chart(errorCtx, {
+						type: 'line',
+						data: {
+							labels: [],
+							datasets: [{
+								label: 'Error Rate',
+								data: [],
+								borderColor: '#f44336',
+								backgroundColor: 'rgba(244, 67, 54, 0.1)',
+								borderWidth: 2,
+								fill: false,
+								tension: 0.1
+							}]
+						},
+						options: {
+							responsive: true,
+							maintainAspectRatio: false,
+							animation: {
+								duration: 750
+							},
+							scales: {
+								y: {
+									beginAtZero: true,
+									max: 100,
+									title: {
+										display: true,
+										text: 'Error Rate (%)'
+									}
+								},
+								x: {
+									title: {
+										display: true,
+										text: 'Time'
+									}
+								}
+							},
+							plugins: {
+								legend: {
+									position: 'top'
+								}
+							}
+						}
+					});
+
+					// Function to update charts with new data
+					function updateCharts() {
+						fetch('/api/chart-data')
+							.then(response => response.json())
+							.then(data => {
+								// Update throughput chart
+								if (data.throughput && data.throughput.history) {
+									const labels = data.throughput.history.map((_, index) => `T-${data.throughput.history.length - index - 1}`);
+									const actualData = data.throughput.history.map(point => point.value);
+									const expectedData = new Array(data.throughput.history.length).fill(data.throughput.expected_value);
+
+									throughputChart.data.labels = labels;
+									throughputChart.data.datasets[0].data = actualData;
+									throughputChart.data.datasets[1].data = expectedData;
+									throughputChart.update('none'); // No animation for frequent updates
+								}
+
+								// Update latency chart
+								if (data.latency && data.latency.history) {
+									const labels = data.latency.history.map((_, index) => `T-${data.latency.history.length - index - 1}`);
+									const latencyData = data.latency.history.map(point => point.value);
+
+									latencyChart.data.labels = labels;
+									latencyChart.data.datasets[0].data = latencyData;
+									latencyChart.update('none');
+								}
+
+								// Update error chart
+								if (data.error && data.error.history) {
+									const labels = data.error.history.map((_, index) => `T-${data.error.history.length - index - 1}`);
+									const errorData = data.error.history.map(point => point.value);
+
+									errorChart.data.labels = labels;
+									errorChart.data.datasets[0].data = errorData;
+									errorChart.update('none');
+								}
+							})
+							.catch(error => {
+								console.error('Error fetching chart data:', error);
+							});
+					}
+
+					// Update charts every 500ms
+					updateCharts(); // Initial load
+					setInterval(updateCharts, 500);
+				});
+			</script>
+
+		</body>
+	</html>
+}
+
+templ BenchmarkControlPanel(data *BenchmarkData) {
+	<div class="panel" id="control-panel">
+		<h3>Benchmark Control</h3>
+		<div class="control-status">
+			if data.Running {
+				<div class="status-indicator running">● Running</div>
+			} else {
+				<div class="status-indicator stopped">● Stopped</div>
+			}
+		</div>
+		
+		<div class="control-buttons">
+			if data.Running {
+				<button hx-post="/stop" hx-target="#control-panel" hx-swap="outerHTML" class="btn-danger">
+					Stop Benchmark
+				</button>
+			} else {
+				<button hx-post="/start" hx-target="#control-panel" hx-swap="outerHTML" class="btn-success">
+					Start Benchmark
+				</button>
+			}
+		</div>
+	</div>
+}
+
+templ BenchmarkMetricsPanel(data *BenchmarkData) {
+	<div class="panel" id="metrics-panel" hx-get="/refresh/metrics" hx-trigger="every 500ms" hx-swap="outerHTML">
+		<h3>Current Metrics</h3>
+		<div class="metrics-grid">
+			<div class="metric">
+				<div class="metric-value">{ fmt.Sprintf("%.1f", data.Metrics.CurrentOPS) }</div>
+				<div class="metric-label">Current OPS</div>
+			</div>
+			<div class="metric">
+				<div class="metric-value">{ fmt.Sprintf("%.1f", data.Metrics.ExpectedOPS) }</div>
+				<div class="metric-label">Expected OPS</div>
+			</div>
+			<div class="metric">
+				<div class="metric-value">{ fmt.Sprintf("%.2f%%", data.Metrics.ErrorRate) }</div>
+				<div class="metric-label">Error Rate</div>
+			</div>
+			<div class="metric">
+				<div class="metric-value">{ fmt.Sprintf("%dms", data.Metrics.LatencyP99.Milliseconds()) }</div>
+				<div class="metric-label">P99 Latency</div>
+			</div>
+			<div class="metric">
+				<div class="metric-value">{ fmt.Sprintf("%d", data.Metrics.TotalOps) }</div>
+				<div class="metric-label">Total Operations</div>
+			</div>
+			<div class="metric">
+				<div class="metric-value">{ fmt.Sprintf("%d", data.Metrics.SuccessfulOps) }</div>
+				<div class="metric-label">Successful</div>
+			</div>
+			<div class="metric">
+				<div class="metric-value">{ fmt.Sprintf("%d", data.Metrics.ErrorOps) }</div>
+				<div class="metric-label">Errors</div>
+			</div>
+			<div class="metric">
+				<div class="metric-value">{ fmt.Sprintf("%d", data.ClientData.ActiveClients) }</div>
+				<div class="metric-label">Active Clients</div>
+			</div>
+		</div>
+	</div>
+}
+
+templ BenchmarkConfigPanel(data *BenchmarkData) {
+	<div class="panel" id="config-panel">
+		<h3>Configuration</h3>
+		<form hx-post="/update-config" hx-target="#config-panel" hx-swap="outerHTML">
+			<div class="form-grid">
+				<div class="form-group">
+					<label>Max Clients:</label>
+					<input type="number" name="max_clients" value={ fmt.Sprintf("%d", data.Config.MaxClients) } min="1" />
+				</div>
+				
+				<div class="form-group">
+					<label>Throttle (OPS):</label>
+					<input type="number" name="throttle_ops" value={ fmt.Sprintf("%d", data.Config.ThrottleOPS) } min="1" />
+				</div>
+				
+				<div class="form-group">
+					<label>Worker Count:</label>
+					<input type="number" name="worker_count" value={ fmt.Sprintf("%d", data.Config.WorkerCount) } min="1" max="100"/>
+				</div>
+				
+				<div class="form-group">
+					<label>Metrics Interval:</label>
+					<input type="text" name="metrics_interval" value={ data.Config.MetricsInterval.String() } placeholder="1s"/>
+				</div>
+				
+				<div class="form-group">
+					<label>Latency Buffer Size:</label>
+					<input type="number" name="latency_buffer_size" value={ fmt.Sprintf("%d", data.Config.LatencyBufferSize) } min="100" max="10000"/>
+				</div>
+			</div>
+			
+			<button type="submit" class="btn-primary">Update Configuration</button>
+		</form>
+	</div>
+}
+
+templ BenchmarkClientsPanel(data *BenchmarkData) {
+	<div class="panel" id="clients-panel" hx-get="/refresh/clients" hx-trigger="every 500ms" hx-swap="outerHTML">
+		<h3>Client Status</h3>
+		<div class="clients-summary">
+			<div class="summary-stat">
+				<span class="stat-label">Active:</span>
+				<span class="stat-value">{ fmt.Sprintf("%d", data.ClientData.ActiveClients) }</span>
+			</div>
+			<div class="summary-stat">
+				<span class="stat-label">Maximum:</span>
+				<span class="stat-value">{ fmt.Sprintf("%d", data.Config.MaxClients) }</span>
+			</div>
+			<div class="summary-stat">
+				<span class="stat-label">Utilization:</span>
+				<span class="stat-value">{ fmt.Sprintf("%.1f%%", float64(data.ClientData.ActiveClients)/float64(data.Config.MaxClients)*100) }</span>
+			</div>
+		</div>
+	</div>
+}
+
+
+
+templ benchmarkStyles() {
+	<style>
+		.container {
+			max-width: 1400px;
+			margin: 0 auto;
+			padding: 20px;
+		}
+		
+		.header {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			margin-bottom: 20px;
+			padding: 20px;
+			background: #f8f9fa;
+			border-radius: 8px;
+			border: 1px solid #e0e0e0;
+		}
+		
+		.header h1 {
+			margin: 0;
+			color: #333;
+		}
+		
+		.dashboard-content {
+			padding: 20px;
+		}
+		
+		.main-panels {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+			gap: 20px;
+		}
+		
+		.panel-section {
+			min-height: 200px;
+		}
+		
+		.panel {
+			background: white;
+			padding: 20px;
+			border-radius: 8px;
+			border: 1px solid #e0e0e0;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+		}
+		
+		.panel h3 {
+			margin: 0 0 15px 0;
+			color: #333;
+			font-size: 18px;
+		}
+		
+		.graphs-section {
+			grid-column: 1 / -1;
+			margin-top: 20px;
+		}
+		
+		.graph-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+			gap: 20px;
+			margin-top: 20px;
+		}
+		
+		.graph-container {
+			background: #f9f9f9;
+			padding: 20px;
+			border-radius: 8px;
+			border: 1px solid #e0e0e0;
+		}
+		
+		.graph-container h3 {
+			margin: 0 0 15px 0;
+			color: #333;
+			font-size: 16px;
+		}
+		
+		.graph-content {
+			position: relative;
+			height: 250px;
+			width: 100%;
+		}
+		
+		.metrics-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+			gap: 15px;
+			margin-top: 15px;
+		}
+		
+		.metric {
+			text-align: center;
+			padding: 10px;
+			background: #f5f5f5;
+			border-radius: 5px;
+		}
+		
+		.metric-value {
+			font-size: 24px;
+			font-weight: bold;
+			color: #333;
+		}
+		
+		.metric-label {
+			font-size: 12px;
+			color: #666;
+			margin-top: 5px;
+		}
+		
+		.form-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+			gap: 15px;
+			margin-bottom: 20px;
+		}
+		
+		.form-group {
+			display: flex;
+			flex-direction: column;
+		}
+		
+		.form-group label {
+			margin-bottom: 5px;
+			font-weight: bold;
+			color: #333;
+		}
+		
+		.form-group input {
+			padding: 8px;
+			border: 1px solid #ddd;
+			border-radius: 4px;
+			font-size: 14px;
+		}
+		
+		.control-status {
+			margin: 15px 0;
+		}
+		
+		.status-indicator {
+			font-size: 16px;
+			font-weight: bold;
+			padding: 8px 15px;
+			border-radius: 20px;
+			display: inline-block;
+		}
+		
+		.status-indicator.running {
+			background: #e8f5e8;
+			color: #2e7d32;
+		}
+		
+		.status-indicator.stopped {
+			background: #ffebee;
+			color: #c62828;
+		}
+		
+		.control-buttons {
+			margin-top: 15px;
+		}
+		
+		.btn-primary {
+			background: #2196F3;
+			color: white;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 14px;
+		}
+		
+		.btn-success {
+			background: #4CAF50;
+			color: white;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 14px;
+		}
+		
+		.btn-danger {
+			background: #f44336;
+			color: white;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 14px;
+		}
+		
+		.btn-primary:hover, .btn-success:hover, .btn-danger:hover {
+			opacity: 0.8;
+		}
+		
+		.clients-summary {
+			display: flex;
+			gap: 20px;
+			margin: 15px 0;
+			padding: 10px;
+			background: #f5f5f5;
+			border-radius: 5px;
+		}
+		
+		.summary-stat {
+			display: flex;
+			align-items: center;
+			gap: 5px;
+		}
+		
+		.stat-label {
+			font-weight: bold;
+			color: #666;
+		}
+		
+		.stat-value {
+			font-size: 18px;
+			font-weight: bold;
+			color: #333;
+		}
+		
+		.clients-table {
+			width: 100%;
+			border-collapse: collapse;
+		}
+		
+		.clients-table th,
+		.clients-table td {
+			padding: 8px 12px;
+			text-align: left;
+			border-bottom: 1px solid #e0e0e0;
+		}
+		
+		.clients-table th {
+			background: #f5f5f5;
+			font-weight: bold;
+			color: #333;
+		}
+		
+		.clients-table td {
+			font-size: 12px;
+			color: #666;
+		}
+		
+		.scrollable {
+			overflow-y: auto;
+		}
+		
+		.no-clients {
+			text-align: center;
+			padding: 40px 20px;
+			color: #666;
+		}
+		
+		.no-clients p {
+			margin: 0 0 5px 0;
+			font-size: 16px;
+		}
+		
+		.no-clients small {
+			font-size: 12px;
+		}
+		
+		.hidden {
+			display: none;
+		}
+		
+		.service-info {
+			display: flex;
+			gap: 20px;
+			align-items: center;
+			font-size: 14px;
+			color: #666;
+		}
+		
+		.service-name {
+			font-weight: bold;
+			color: #333;
+		}
+	</style>
+} 

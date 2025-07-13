@@ -54,8 +54,8 @@ func DefaultClientManagerConfig() ClientManagerConfig {
 
 // ClientManager manages client identities with health checks and persistence
 type ClientManager struct {
-	hashMap                     *HashMap[string, string]      // container ID -> client name
-	priorityQueue               *PriorityQueue[int64, string] // timestamp -> container ID
+	hashMap                     *HashMap[string, ClientIdentity] // container ID -> client identity
+	priorityQueue               *PriorityQueue[int64, string]    // timestamp -> container ID
 	startTime                   time.Time
 	config                      ClientManagerConfig
 	priorityQueueAddCallback    PriorityQueueAddCallback    // Optional callback for priority queue add operations
@@ -71,9 +71,9 @@ type ClientManager struct {
 // NewClientManager creates a new client manager with the given configuration
 func NewClientManager(config ClientManagerConfig) *ClientManager {
 	// Create HashMap with persistence if enabled
-	var hashMap *HashMap[string, string]
+	var hashMap *HashMap[string, ClientIdentity]
 	if config.PersistenceConfig.Enabled {
-		hashMap = NewHashMapWithPersistence[string, string](config.PersistenceConfig)
+		hashMap = NewHashMapWithPersistence[string, ClientIdentity](config.PersistenceConfig)
 		// Try to load existing data
 		if config.PersistenceConfig.FilePath != "" {
 			if err := hashMap.LoadFromDisk(config.PersistenceConfig.FilePath); err != nil {
@@ -81,7 +81,7 @@ func NewClientManager(config ClientManagerConfig) *ClientManager {
 			}
 		}
 	} else {
-		hashMap = NewHashMap[string, string]()
+		hashMap = NewHashMap[string, ClientIdentity]()
 	}
 
 	return &ClientManager{
@@ -151,8 +151,8 @@ func (cm *ClientManager) AddClient(identity ClientIdentity) {
 		return
 	}
 
-	// Store in hashmap
-	cm.hashMap.Put(identity.ContainerID, identity.Name)
+	// Store complete identity in hashmap
+	cm.hashMap.Put(identity.ContainerID, identity)
 
 	// Add to priority queue with current timestamp
 	timestamp := cm.getCurrentTimestamp()
@@ -186,15 +186,12 @@ func (cm *ClientManager) RemoveClient(containerID string) bool {
 
 // GetClient retrieves a client by container ID
 func (cm *ClientManager) GetClient(containerID string) (ClientIdentity, bool) {
-	name, exists := cm.hashMap.Get(containerID)
+	client, exists := cm.hashMap.Get(containerID)
 	if !exists {
 		return ClientIdentity{}, false
 	}
 
-	return ClientIdentity{
-		Name:        name,
-		ContainerID: containerID,
-	}, true
+	return client, true
 }
 
 // GetAllClients returns all client identities
@@ -203,10 +200,7 @@ func (cm *ClientManager) GetAllClients() []ClientIdentity {
 	clients := make([]ClientIdentity, 0, len(entries))
 
 	for _, entry := range entries {
-		clients = append(clients, ClientIdentity{
-			Name:        entry.Value,
-			ContainerID: entry.Key,
-		})
+		clients = append(clients, entry.Value)
 	}
 
 	return clients
@@ -224,11 +218,8 @@ func (cm *ClientManager) GetRandomSubset(subsetSize ...int) []ClientIdentity {
 	identities := make([]ClientIdentity, 0, len(containerIDs))
 
 	for _, containerID := range containerIDs {
-		if name, exists := cm.hashMap.Get(containerID); exists {
-			identities = append(identities, ClientIdentity{
-				Name:        name,
-				ContainerID: containerID,
-			})
+		if client, exists := cm.hashMap.Get(containerID); exists {
+			identities = append(identities, client)
 		}
 	}
 
@@ -414,7 +405,19 @@ func (cm *ClientManager) cleanupWorker() {
 
 // isAlive checks if a client is alive by pinging its /alive endpoint
 func (cm *ClientManager) isAlive(containerID string) bool {
-	url := fmt.Sprintf("http://%s:9090/alive", containerID)
+	// Get the client identity to access hostname
+	client, exists := cm.hashMap.Get(containerID)
+	if !exists {
+		return false
+	}
+
+	// Use hostname for inter-container communication
+	if client.Hostname == "" {
+		// No hostname available, cannot communicate
+		return false
+	}
+
+	url := fmt.Sprintf("http://%s:9090/alive", client.Hostname)
 
 	cm.workersMutex.RLock()
 	timeout := cm.config.Timeout
@@ -428,8 +431,8 @@ func (cm *ClientManager) isAlive(containerID string) bool {
 		return false
 	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return false
 	}
@@ -459,6 +462,7 @@ func (cm *ClientManager) GetStats() ClientManagerStats {
 type QueueItem struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
+	Hostname  string `json:"hostname"`
 	Priority  int64  `json:"priority"`
 	Timestamp string `json:"timestamp"`
 	Age       string `json:"age"`
@@ -475,15 +479,18 @@ func (cm *ClientManager) GetQueueItems() []QueueItem {
 		actualTime := cm.startTime.Add(timestamp)
 		age := time.Since(actualTime)
 
-		// Get client name, fallback to empty string if not found
+		// Get client information, fallback to empty strings if not found
 		clientName := ""
-		if name, exists := cm.hashMap.Get(containerID); exists {
-			clientName = name
+		clientHostname := ""
+		if client, exists := cm.hashMap.Get(containerID); exists {
+			clientName = client.Name
+			clientHostname = client.Hostname
 		}
 
 		items[i] = QueueItem{
 			ID:        containerID,
 			Name:      clientName,
+			Hostname:  clientHostname,
 			Priority:  priority,
 			Timestamp: actualTime.Format("15:04:05"),
 			Age:       formatDuration(age),

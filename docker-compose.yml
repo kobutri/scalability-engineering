@@ -11,8 +11,6 @@ services:
       - ENV=${ENV:-production}
       - DATA_DIR=/data
     volumes:
-      # Mount source code for development (only used in dev mode)
-      - ${BOOTSTRAP_VOLUME_MOUNT:-./bootstrap:/app}
       # Mount data directory for persistence
       - bootstrap_data:/data
       # Mount Docker socket for container management

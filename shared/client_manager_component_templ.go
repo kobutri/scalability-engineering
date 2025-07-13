@@ -431,12 +431,12 @@ func dataSection(data ClientManagerData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\"><input type=\"text\" name=\"container_id\" placeholder=\"Client ID...\" required style=\"width: 120px;\"> <input type=\"text\" name=\"name\" placeholder=\"Client name...\" required style=\"width: 120px;\"> <button type=\"submit\">Add Client</button></form><div class=\"scrollable\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\"><input type=\"text\" name=\"container_id\" placeholder=\"Client ID...\" required style=\"width: 120px;\"> <input type=\"text\" name=\"name\" placeholder=\"Client name...\" required style=\"width: 120px;\"> <input type=\"text\" name=\"hostname\" placeholder=\"Hostname (optional)...\" style=\"width: 120px;\"> <button type=\"submit\">Add Client</button></form><div class=\"scrollable\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(data.ClientEntries) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<table><thead><tr><th>Container ID</th><th>Client Name</th><th>Action</th></tr></thead> <tbody>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<table><thead><tr><th>Container ID</th><th>Client Name</th><th>Hostname</th><th>Action</th></tr></thead> <tbody>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -446,9 +446,9 @@ func dataSection(data ClientManagerData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var25 string
-				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Key)
+				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(entry.ContainerID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 168, Col: 23}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 170, Col: 31}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 				if templ_7745c5c3_Err != nil {
@@ -459,112 +459,112 @@ func dataSection(data ClientManagerData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var26 string
-				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Value)
+				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 169, Col: 25}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 171, Col: 24}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</td><td><button hx-post=\"/client-manager/remove-client\" hx-vals=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var27 string
-				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("{\"id\":\"%s\"}", entry.Key))
+				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Hostname)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 171, Col: 108}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 172, Col: 28}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" hx-target=\"#client-manager\" hx-swap=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</td><td><button hx-post=\"/client-manager/remove-client\" hx-vals=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var28 string
-				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(morphSwap)
+				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("{\"id\":\"%s\"}", entry.ContainerID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 171, Col: 157}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 174, Col: 116}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" hx-ext=\"json-enc\" class=\"btn-danger\">Remove</button></td></tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" hx-target=\"#client-manager\" hx-swap=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var29 string
+				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(morphSwap)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 174, Col: 165}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\" hx-ext=\"json-enc\" class=\"btn-danger\">Remove</button></td></tr>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</tbody></table>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</tbody></table>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<div class=\"list-item\">No clients connected</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<div class=\"list-item\">No clients connected</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</div></div><div class=\"panel\"><h3>Priority Queue (")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var29 string
-		templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(data.QueueItems)))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 183, Col: 63}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, " items)</h3><form id=\"clear-queue-form\" hx-post=\"/client-manager/clear-queue\" hx-trigger=\"submit\" hx-target=\"#client-manager\" hx-swap=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</div></div><div class=\"panel\"><h3>Priority Queue (")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var30 string
-		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(morphSwap)
+		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(data.QueueItems)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 184, Col: 134}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 186, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\"><button type=\"submit\" class=\"btn-danger\">Clear Queue</button></form><div class=\"scrollable\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, " items)</h3><form id=\"clear-queue-form\" hx-post=\"/client-manager/clear-queue\" hx-trigger=\"submit\" hx-target=\"#client-manager\" hx-swap=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var31 string
+		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(morphSwap)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 187, Col: 134}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\"><button type=\"submit\" class=\"btn-danger\">Clear Queue</button></form><div class=\"scrollable\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(data.QueueItems) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<table><thead><tr><th>Container ID</th><th>Client Name</th><th>Age</th><th>Timestamp</th><th>Action</th></tr></thead> <tbody>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<table><thead><tr><th>Container ID</th><th>Client Name</th><th>Hostname</th><th>Age</th><th>Timestamp</th><th>Action</th></tr></thead> <tbody>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, item := range data.QueueItems {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<tr><td>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var31 string
-				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(item.ID)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 202, Col: 21}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</td><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<tr><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var32 string
-				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(item.Name)
+				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(item.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 203, Col: 23}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 206, Col: 21}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 				if templ_7745c5c3_Err != nil {
@@ -575,9 +575,9 @@ func dataSection(data ClientManagerData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var33 string
-				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(item.Age)
+				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(item.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 204, Col: 22}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 207, Col: 23}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {
@@ -588,56 +588,82 @@ func dataSection(data ClientManagerData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var34 string
-				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(item.Timestamp)
+				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(item.Hostname)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 205, Col: 28}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 208, Col: 27}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</td><td><button hx-post=\"/client-manager/remove-from-queue\" hx-vals=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var35 string
-				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("{\"id\":\"%s\"}", item.ID))
+				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(item.Age)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 207, Col: 110}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 209, Col: 22}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" hx-target=\"#client-manager\" hx-swap=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var36 string
-				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(morphSwap)
+				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(item.Timestamp)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 207, Col: 159}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 210, Col: 28}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\" hx-ext=\"json-enc\" class=\"btn-danger\">Remove</button></td></tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</td><td><button hx-post=\"/client-manager/remove-from-queue\" hx-vals=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var37 string
+				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("{\"id\":\"%s\"}", item.ID))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 212, Col: 110}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\" hx-target=\"#client-manager\" hx-swap=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var38 string
+				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(morphSwap)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `shared/client_manager_component.templ`, Line: 212, Col: 159}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\" hx-ext=\"json-enc\" class=\"btn-danger\">Remove</button></td></tr>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</tbody></table>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</tbody></table>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"list-item\">Queue is empty</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<div class=\"list-item\">Queue is empty</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -662,12 +688,12 @@ func SharedStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var37 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var37 == nil {
-			templ_7745c5c3_Var37 = templ.NopComponent
+		templ_7745c5c3_Var39 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var39 == nil {
+			templ_7745c5c3_Var39 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<style>\n\t\t* {\n\t\t\tbox-sizing: border-box;\n\t\t}\n\t\thtml, body {\n\t\t\theight: 100%;\n\t\t\tmargin: 0;\n\t\t\tpadding: 0;\n\t\t}\n\t\tbody {\n\t\t\tfont-family: monospace;\n\t\t\tbackground: #f5f5f5;\n\t\t\tfont-size: 14px;\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\tpadding: 8px;\n\t\t\tbox-sizing: border-box;\n\t\t}\n\t\t.container {\n\t\t\tmax-width: 1400px;\n\t\t\twidth: 100%;\n\t\t\theight: 100%;\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t}\n\t\t.header {\n\t\t\tbackground: #fff;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tpadding: 8px;\n\t\t\tmargin-bottom: 8px;\n\t\t\tflex-shrink: 0;\n\t\t}\n\t\t.header h1 {\n\t\t\tmargin: 0;\n\t\t\tfont-size: 18px;\n\t\t}\n\t\t.grid {\n\t\t\tdisplay: grid;\n\t\t\tgrid-template-columns: 1fr 1fr;\n\t\t\tmax-height: 300px;\n\t\t\tgap: 8px;\n\t\t\tmargin-bottom: 8px;\n\t\t}\n\t\t.grid.control-grid {\n\t\t\tgrid-template-columns: 1fr;\n\t\t\tmax-width: 400px;\n\t\t}\n\t\t#client-manager-component {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t}\n\t\t.data-grid {\n\t\t\tdisplay: grid;\n\t\t\tgrid-template-columns: 1fr 1fr 1fr;\n\t\t\tgap: 8px;\n\t\t\tmargin-bottom: 8px;\n\t\t\tmin-height: 0;\n\t\t}\n\t\t.client-management {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\tflex: 1;\n\t\t\tmin-height: 0;\n\t\t}\n\t\t.client-manager {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\tflex: 1;\n\t\t\tmin-height: 0;\n\t\t\tmax-height: 50%;\n\t\t}\n\t\t.client-management .scrollable {\n\t\t\tflex: 1;\n\t\t\tmin-height: 200px;\n\t\t}\n\t\t.panel {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\theight: 100%;\n\t\t\tmin-height: 0;\n\t\t\tbackground: #fff;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tpadding: 8px;\n\t\t}\n\t\t.panel h3 {\n\t\t\tmargin: 0 0 8px 0;\n\t\t\tfont-size: 13px;\n\t\t\tpadding-bottom: 4px;\n\t\t}\n\t\t.main-content {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\tflex: 1;\n\t\t\tmin-height: 0;\n\t\t}\n\t\t.stats {\n\t\t\tdisplay: grid;\n\t\t\tgrid-template-columns: repeat(9, 1fr);\n\t\t\tgap: 8px;\n\t\t\tmargin-bottom: 8px;\n\t\t\tmax-height: 120px;\n\t\t\tflex-shrink: 0;\n\t\t}\n\t\t.stat {\n\t\t\tbackground: #fff;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tpadding: 8px;\n\t\t\ttext-align: center;\n\t\t}\n\t\t.stat-value {\n\t\t\tfont-size: 16px;\n\t\t\tfont-weight: bold;\n\t\t}\n\t\t.stat-label {\n\t\t\tfont-size: 11px;\n\t\t\tcolor: #666;\n\t\t}\n\t\t.scrollable {\n\t\t\toverflow-y: auto;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tbackground: #fff;\n\t\t}\n\t\t.list-item {\n\t\t\tpadding: 4px 8px;\n\t\t\tborder-bottom: 1px solid #eee;\n\t\t\tdisplay: flex;\n\t\t\tjustify-content: space-between;\n\t\t\talign-items: center;\n\t\t}\n\t\t.list-item:last-child {\n\t\t\tborder-bottom: none;\n\t\t}\n\t\t.list-item:hover {\n\t\t\tbackground: #f9f9f9;\n\t\t}\n\t\ttable {\n\t\t\twidth: 100%;\n\t\t\tborder-collapse: collapse;\n\t\t\tfont-size: 11px;\n\t\t}\n\t\tth, td {\n\t\t\tpadding: 4px;\n\t\t\ttext-align: left;\n\t\t\tborder-bottom: 1px solid #eee;\n\t\t}\n\t\tth {\n\t\t\tbackground: #f9f9f9;\n\t\t\tfont-weight: bold;\n\t\t}\n\t\t.form-group {\n\t\t\tmargin-bottom: 8px;\n\t\t}\n\t\t.form-group label {\n\t\t\tdisplay: block;\n\t\t\tmargin-bottom: 2px;\n\t\t\tfont-size: 11px;\n\t\t}\n\t\tinput, select, button {\n\t\t\tpadding: 4px;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tfont-family: monospace;\n\t\t\tfont-size: 11px;\n\t\t}\n\t\tbutton {\n\t\t\tbackground: #fff;\n\t\t\tcursor: pointer;\n\t\t}\n\t\tbutton:hover {\n\t\t\tbackground: #f0f0f0;\n\t\t}\n\t\t.btn-danger {\n\t\t\tbackground: #ffe6e6;\n\t\t\tcolor: #d00;\n\t\t}\n\t\t.btn-danger:hover {\n\t\t\tbackground: #ffcccc;\n\t\t}\n\t\t.btn-success {\n\t\t\tbackground: #e6ffe6;\n\t\t\tcolor: #060;\n\t\t}\n\t\t.btn-success:hover {\n\t\t\tbackground: #ccffcc;\n\t\t}\n\t\t.btn-primary {\n\t\t\tbackground: #e6f3ff;\n\t\t\tcolor: #0066cc;\n\t\t}\n\t\t.btn-primary:hover:not(:disabled) {\n\t\t\tbackground: #cce6ff;\n\t\t}\n\t\t.connection-status {\n\t\t\tpadding: 8px 12px;\n\t\t\tborder-radius: 3px;\n\t\t\tfont-weight: bold;\n\t\t\tmargin-bottom: 10px;\n\t\t}\n\t\t.connection-status.connected {\n\t\t\tbackground: #e6ffe6;\n\t\t\tcolor: #060;\n\t\t}\n\t\t.connection-status.disconnected {\n\t\t\tbackground: #ffe6e6;\n\t\t\tcolor: #d00;\n\t\t}\n\t\t.error-message {\n\t\t\tbackground: #ffe6e6;\n\t\t\tcolor: #d00;\n\t\t\tpadding: 8px 12px;\n\t\t\tborder-radius: 3px;\n\t\t\tmargin-bottom: 10px;\n\t\t\tfont-size: 12px;\n\t\t}\n\t\t.control-buttons {\n\t\t\tdisplay: flex;\n\t\t\tgap: 10px;\n\t\t\tmargin-bottom: 15px;\n\t\t}\n\t\t.control-buttons button {\n\t\t\tflex: 1;\n\t\t}\n\t\t.inline-form {\n\t\t\tdisplay: flex;\n\t\t\tgap: 5px;\n\t\t\talign-items: center;\n\t\t}\n\t\t.status-indicator {\n\t\t\tposition: fixed;\n\t\t\ttop: 10px;\n\t\t\tright: 10px;\n\t\t\tbackground: #fff;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tpadding: 5px 10px;\n\t\t\tfont-size: 12px;\n\t\t}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<style>\n\t\t* {\n\t\t\tbox-sizing: border-box;\n\t\t}\n\t\thtml, body {\n\t\t\theight: 100%;\n\t\t\tmargin: 0;\n\t\t\tpadding: 0;\n\t\t}\n\t\tbody {\n\t\t\tfont-family: monospace;\n\t\t\tbackground: #f5f5f5;\n\t\t\tfont-size: 14px;\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\tpadding: 8px;\n\t\t\tbox-sizing: border-box;\n\t\t}\n\t\t.container {\n\t\t\tmax-width: 1400px;\n\t\t\twidth: 100%;\n\t\t\theight: 100%;\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t}\n\t\t.header {\n\t\t\tbackground: #fff;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tpadding: 8px;\n\t\t\tmargin-bottom: 8px;\n\t\t\tflex-shrink: 0;\n\t\t}\n\t\t.header h1 {\n\t\t\tmargin: 0;\n\t\t\tfont-size: 18px;\n\t\t}\n\t\t.grid {\n\t\t\tdisplay: grid;\n\t\t\tgrid-template-columns: 1fr 1fr;\n\t\t\tmax-height: 300px;\n\t\t\tgap: 8px;\n\t\t\tmargin-bottom: 8px;\n\t\t}\n\t\t.grid.control-grid {\n\t\t\tgrid-template-columns: 1fr;\n\t\t\tmax-width: 400px;\n\t\t}\n\t\t#client-manager-component {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t}\n\t\t.data-grid {\n\t\t\tdisplay: grid;\n\t\t\tgrid-template-columns: 1fr 1fr 1fr;\n\t\t\tgap: 8px;\n\t\t\tmargin-bottom: 8px;\n\t\t\tmin-height: 0;\n\t\t}\n\t\t.client-management {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\tflex: 1;\n\t\t\tmin-height: 0;\n\t\t}\n\t\t.client-manager {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\tflex: 1;\n\t\t\tmin-height: 0;\n\t\t\tmax-height: 50%;\n\t\t}\n\t\t.client-management .scrollable {\n\t\t\tflex: 1;\n\t\t\tmin-height: 200px;\n\t\t}\n\t\t.panel {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\theight: 100%;\n\t\t\tmin-height: 0;\n\t\t\tbackground: #fff;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tpadding: 8px;\n\t\t}\n\t\t.panel h3 {\n\t\t\tmargin: 0 0 8px 0;\n\t\t\tfont-size: 13px;\n\t\t\tpadding-bottom: 4px;\n\t\t}\n\t\t.main-content {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\tflex: 1;\n\t\t\tmin-height: 0;\n\t\t}\n\t\t.stats {\n\t\t\tdisplay: grid;\n\t\t\tgrid-template-columns: repeat(9, 1fr);\n\t\t\tgap: 8px;\n\t\t\tmargin-bottom: 8px;\n\t\t\tmax-height: 120px;\n\t\t\tflex-shrink: 0;\n\t\t}\n\t\t.stat {\n\t\t\tbackground: #fff;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tpadding: 8px;\n\t\t\ttext-align: center;\n\t\t}\n\t\t.stat-value {\n\t\t\tfont-size: 16px;\n\t\t\tfont-weight: bold;\n\t\t}\n\t\t.stat-label {\n\t\t\tfont-size: 11px;\n\t\t\tcolor: #666;\n\t\t}\n\t\t.scrollable {\n\t\t\toverflow-y: auto;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tbackground: #fff;\n\t\t}\n\t\t.list-item {\n\t\t\tpadding: 4px 8px;\n\t\t\tborder-bottom: 1px solid #eee;\n\t\t\tdisplay: flex;\n\t\t\tjustify-content: space-between;\n\t\t\talign-items: center;\n\t\t}\n\t\t.list-item:last-child {\n\t\t\tborder-bottom: none;\n\t\t}\n\t\t.list-item:hover {\n\t\t\tbackground: #f9f9f9;\n\t\t}\n\t\ttable {\n\t\t\twidth: 100%;\n\t\t\tborder-collapse: collapse;\n\t\t\tfont-size: 11px;\n\t\t}\n\t\tth, td {\n\t\t\tpadding: 4px;\n\t\t\ttext-align: left;\n\t\t\tborder-bottom: 1px solid #eee;\n\t\t}\n\t\tth {\n\t\t\tbackground: #f9f9f9;\n\t\t\tfont-weight: bold;\n\t\t}\n\t\t.form-group {\n\t\t\tmargin-bottom: 8px;\n\t\t}\n\t\t.form-group label {\n\t\t\tdisplay: block;\n\t\t\tmargin-bottom: 2px;\n\t\t\tfont-size: 11px;\n\t\t}\n\t\tinput, select, button {\n\t\t\tpadding: 4px;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tfont-family: monospace;\n\t\t\tfont-size: 11px;\n\t\t}\n\t\tbutton {\n\t\t\tbackground: #fff;\n\t\t\tcursor: pointer;\n\t\t}\n\t\tbutton:hover {\n\t\t\tbackground: #f0f0f0;\n\t\t}\n\t\t.btn-danger {\n\t\t\tbackground: #ffe6e6;\n\t\t\tcolor: #d00;\n\t\t}\n\t\t.btn-danger:hover {\n\t\t\tbackground: #ffcccc;\n\t\t}\n\t\t.btn-success {\n\t\t\tbackground: #e6ffe6;\n\t\t\tcolor: #060;\n\t\t}\n\t\t.btn-success:hover {\n\t\t\tbackground: #ccffcc;\n\t\t}\n\t\t.btn-primary {\n\t\t\tbackground: #e6f3ff;\n\t\t\tcolor: #0066cc;\n\t\t}\n\t\t.btn-primary:hover:not(:disabled) {\n\t\t\tbackground: #cce6ff;\n\t\t}\n\t\t.connection-status {\n\t\t\tpadding: 8px 12px;\n\t\t\tborder-radius: 3px;\n\t\t\tfont-weight: bold;\n\t\t\tmargin-bottom: 10px;\n\t\t}\n\t\t.connection-status.connected {\n\t\t\tbackground: #e6ffe6;\n\t\t\tcolor: #060;\n\t\t}\n\t\t.connection-status.disconnected {\n\t\t\tbackground: #ffe6e6;\n\t\t\tcolor: #d00;\n\t\t}\n\t\t.error-message {\n\t\t\tbackground: #ffe6e6;\n\t\t\tcolor: #d00;\n\t\t\tpadding: 8px 12px;\n\t\t\tborder-radius: 3px;\n\t\t\tmargin-bottom: 10px;\n\t\t\tfont-size: 12px;\n\t\t}\n\t\t.control-buttons {\n\t\t\tdisplay: flex;\n\t\t\tgap: 10px;\n\t\t\tmargin-bottom: 15px;\n\t\t}\n\t\t.control-buttons button {\n\t\t\tflex: 1;\n\t\t}\n\t\t.inline-form {\n\t\t\tdisplay: flex;\n\t\t\tgap: 5px;\n\t\t\talign-items: center;\n\t\t}\n\t\t.status-indicator {\n\t\t\tposition: fixed;\n\t\t\ttop: 10px;\n\t\t\tright: 10px;\n\t\t\tbackground: #fff;\n\t\t\tborder: 1px solid #ddd;\n\t\t\tpadding: 5px 10px;\n\t\t\tfont-size: 12px;\n\t\t}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

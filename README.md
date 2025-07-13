@@ -4,7 +4,7 @@ A high-performance bootstrap server for distributed systems with dynamic client 
 
 ## Overview
 
-This project implements a bootstrap server that maintains a registry of connected clients and provides them with a subset of known peers for distributed system connectivity. It includes a web management interface and automated client lifecycle management through Docker.
+This project implements a bootstrap server that maintains a registry of connected clients and provides them with a subset of known peers for distributed system connectivity. It includes a web management interface, automated client lifecycle management through Docker, and a comprehensive benchmarking tool.
 
 ## Features
 
@@ -15,6 +15,7 @@ This project implements a bootstrap server that maintains a registry of connecte
 - **Docker Integration**: Automated client container creation and management
 - **Persistent Storage**: Data persistence across server restarts
 - **Configurable Parameters**: Runtime configuration of timeouts, intervals, and subset sizes
+- **Benchmark Tool**: Comprehensive load testing with real-time metrics and interactive dashboard
 
 ## Quick Start
 
@@ -27,6 +28,15 @@ docker-compose up
 ```
 
 Access the web interface at `http://localhost:8080/status-page`
+
+### Start with Benchmark Tool
+
+```bash
+# Start bootstrap server and benchmark tool
+docker-compose --profile benchmark up
+```
+
+Access the benchmark dashboard at `http://localhost:8090`
 
 ### Development Mode
 
@@ -45,6 +55,10 @@ go run .
 # In another terminal, start a client
 cd client
 CLIENT_NAME=my-client go run .
+
+# In another terminal, start the benchmark tool
+cd benchmark
+./run.sh
 ```
 
 ## API Endpoints
@@ -75,6 +89,40 @@ Configure via environment variables:
 | `SUBSET_SIZE` | `5` | Number of peers returned to clients |
 | `DATA_DIR` | `../data` | Directory for persistent storage |
 
+## Benchmark Tool
+
+The benchmark tool provides comprehensive load testing for the bootstrap server with:
+
+- **Real-time Metrics**: Throughput, error rate, P99 latency
+- **Interactive Dashboard**: HTMX-powered web interface
+- **Configurable Load**: Adjustable client count and operations per second
+- **Worker Pool**: Concurrent operations with configurable thread count
+- **Live Graphs**: Visual monitoring of performance metrics
+
+### Quick Benchmark
+
+```bash
+# Run basic benchmark (100 clients, 10 ops/second)
+cd benchmark
+./run.sh
+
+# Or with custom configuration
+MAX_CLIENTS=500 THROTTLE_OPS=50 ./run.sh
+```
+
+### Benchmark Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAX_CLIENTS` | 100 | Maximum number of concurrent clients |
+| `THROTTLE_OPS` | 10 | Operations per second throttling |
+| `BOOTSTRAP_URL` | `http://localhost:8080` | Bootstrap server URL |
+| `FIXED_HOSTNAME` | `benchmark-host` | Fixed hostname for generated clients |
+| `WORKER_COUNT` | 10 | Number of worker threads |
+| `METRICS_INTERVAL` | 1s | Metrics calculation interval |
+| `LATENCY_BUFFER_SIZE` | 1000 | Buffer size for latency calculations |
+| `PORT` | 8090 | Dashboard port |
+
 ## Project Structure
 
 ```
@@ -87,6 +135,16 @@ scalability-engineering/
 ├── client/            # Example client implementation
 │   ├── main.go       # Client with web UI
 │   └── client.templ  # Client dashboard template
+├── benchmark/         # Benchmark tool
+│   ├── main.go       # Benchmark implementation
+│   ├── handlers.go   # HTTP handlers
+│   ├── dashboard.templ # Dashboard template
+│   ├── run.sh        # Run script
+│   └── README.md     # Benchmark documentation
+├── shared/           # Shared components
+│   ├── client_manager.go # Client management
+│   ├── hashset.go    # Thread-safe data structures
+│   └── priority_queue.go # Priority queue implementation
 └── data/             # Persistent storage directory
 ```
 
@@ -112,6 +170,17 @@ curl http://localhost:8080/
 curl -X POST http://localhost:8080/bulk-create-clients -d "count=10"
 ```
 
+### Run Load Test
+
+```bash
+# Basic load test
+docker run -p 8090:8090 \
+  -e MAX_CLIENTS=100 \
+  -e THROTTLE_OPS=10 \
+  -e BOOTSTRAP_URL=http://host.docker.internal:8080 \
+  bootstrap-benchmark
+```
+
 ## Development
 
 ### Running Tests
@@ -125,7 +194,7 @@ go test -race  # Test for race conditions
 ### Building Docker Images
 
 ```bash
-./build.sh  # Builds both bootstrap and client images
+./build.sh  # Builds bootstrap, client, and benchmark images
 ```
 
 ### Docker Compose Files
@@ -142,6 +211,13 @@ The bootstrap server uses:
 - **Docker API**: For dynamic client container management
 - **Fine-grained Locking**: Minimal contention under high concurrency
 - **Persistent Storage**: JSON-based data persistence
+
+The benchmark tool provides:
+
+- **Worker Pool**: Concurrent operations with configurable parallelism
+- **Throttling**: Rate-limited operations for controlled load testing
+- **Metrics Collection**: Real-time performance monitoring
+- **Interactive Dashboard**: Web-based control and visualization
 
 ## License
 

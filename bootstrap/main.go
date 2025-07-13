@@ -64,12 +64,13 @@ func (s *Server) getBootstrapData() BootstrapData {
 	queueItems := s.clientManager.GetQueueItems()
 	config := s.clientManager.GetConfig()
 
-	// Convert client identities to entries format
-	clientEntries := make([]shared.Entry[string, string], len(allClients))
+	// Convert client identities to ClientEntry format
+	clientEntries := make([]shared.ClientEntry, len(allClients))
 	for i, client := range allClients {
-		clientEntries[i] = shared.Entry[string, string]{
-			Key:   client.ContainerID,
-			Value: client.Name,
+		clientEntries[i] = shared.ClientEntry{
+			ContainerID: client.ContainerID,
+			Name:        client.Name,
+			Hostname:    client.Hostname,
 		}
 	}
 

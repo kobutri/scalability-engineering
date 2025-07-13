@@ -150,6 +150,7 @@ templ dataSection(data ClientManagerData) {
 		<form id="add-client-form" hx-post="/client-manager/add-client" hx-trigger="submit" hx-target="#client-manager" hx-swap={morphSwap}>
 			<input type="text" name="container_id" placeholder="Client ID..." required style="width: 120px;"/>
 			<input type="text" name="name" placeholder="Client name..." required style="width: 120px;"/>
+			<input type="text" name="hostname" placeholder="Hostname (optional)..." style="width: 120px;"/>
 			<button type="submit">Add Client</button>
 		</form>
 		<div class="scrollable">
@@ -159,16 +160,18 @@ templ dataSection(data ClientManagerData) {
 						<tr>
 							<th>Container ID</th>
 							<th>Client Name</th>
+							<th>Hostname</th>
 							<th>Action</th>
 						</tr>
 					</thead>
 					<tbody>
 						for _, entry := range data.ClientEntries {
 							<tr>
-								<td>{ entry.Key }</td>
-								<td>{ entry.Value }</td>
+								<td>{ entry.ContainerID }</td>
+								<td>{ entry.Name }</td>
+								<td>{ entry.Hostname }</td>
 								<td>
-									<button hx-post="/client-manager/remove-client" hx-vals={ fmt.Sprintf("{\"id\":\"%s\"}", entry.Key) } hx-target="#client-manager" hx-swap={morphSwap} hx-ext="json-enc" class="btn-danger">Remove</button>
+									<button hx-post="/client-manager/remove-client" hx-vals={ fmt.Sprintf("{\"id\":\"%s\"}", entry.ContainerID) } hx-target="#client-manager" hx-swap={morphSwap} hx-ext="json-enc" class="btn-danger">Remove</button>
 								</td>
 							</tr>
 						}
@@ -191,6 +194,7 @@ templ dataSection(data ClientManagerData) {
 						<tr>
 							<th>Container ID</th>
 							<th>Client Name</th>
+							<th>Hostname</th>
 							<th>Age</th>
 							<th>Timestamp</th>
 							<th>Action</th>
@@ -201,6 +205,7 @@ templ dataSection(data ClientManagerData) {
 							<tr>
 								<td>{ item.ID }</td>
 								<td>{ item.Name }</td>
+								<td>{ item.Hostname }</td>
 								<td>{ item.Age }</td>
 								<td>{ item.Timestamp }</td>
 								<td>
